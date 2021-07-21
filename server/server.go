@@ -123,9 +123,10 @@ func (s *CacheServer) Handle(c net.Conn) {
             if size - read < num { num = size - read }
             b := buf[:num]
             if _, err := c.Read(b); err != nil {
+                file.Close()
                 logger.Error("read body err", zap.Int("read", read), zap.Int("size", size), zap.Error(err))
                 os.Remove(filename)
-                break
+                return
             }
             read += num
         }
