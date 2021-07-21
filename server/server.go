@@ -5,6 +5,7 @@ import (
     "fmt"
     "github.com/larryhou/unity-gocache/config"
     "go.uber.org/zap"
+    "io"
     "net"
     "os"
     "path"
@@ -85,7 +86,7 @@ func (s *CacheServer) Handle(c net.Conn) {
 
     cmd := buf[:2]
     if _, err := c.Read(cmd); err != nil {
-        logger.Error("read command err", zap.Error(err))
+        if err != io.EOF { logger.Error("read command err", zap.Error(err)) }
         return
     }
 
