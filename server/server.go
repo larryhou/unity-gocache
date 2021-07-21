@@ -84,73 +84,81 @@ func (s *CacheServer) Handle(c net.Conn) {
         return
     }
 
-    cmd := buf[:2]
-    if _, err := c.Read(cmd); err != nil {
-        if err != io.EOF { logger.Error("read command err", zap.Error(err)) }
-        return
-    }
-
-    var trx Transaction
-
-    switch cmd[0] {
-    case 'q': return
-    case 'g':
-    case 'p':
-        t := RequestType(cmd[1])
-        s := buf[:16]
-        if _, err := c.Read(s); err != nil {
-            logger.Error("read put size err", zap.Error(err))
+    trx := &Transaction{}
+    for {
+        cmd := buf[:2]
+        if _, err := c.Read(cmd); err != nil {
+            if err != io.EOF { logger.Error("read command err", zap.Error(err)) }
             return
         }
 
-        size, err := strconv.ParseInt(string(s), 16, 32)
-        if err != nil {
-            logger.Error("parse put size err", zap.Error(err))
-            return
-        }
 
-        dir := path.Join(config.Path, trx.Guid[:2])
-        if _, err := os.Stat(dir); err != nil || os.IsNotExist(err) { os.MkdirAll(dir, 0700) }
-        filename := path.Join(dir, trx.Guid + "-" + trx.Hash + "." + t.extension())
-        file, err := os.OpenFile(filename, os.O_CREATE, 0700)
-        if err != nil {
-            logger.Error("create file err", zap.String("file", filename), zap.Error(err))
-            return
-        }
 
-        read := 0
-        for size := int(size); read < size; {
-            num := len(buf)
-            if size - read < num { num = size - read }
-            b := buf[:num]
-            if _, err := c.Read(b); err != nil {
-                file.Close()
-                logger.Error("read body err", zap.Int("read", read), zap.Int("size", size), zap.Error(err))
-                os.Remove(filename)
+        switch cmd[0] {
+        case 'q': return
+        case 'g':
+        case 'p':
+            t := RequestType(cmd[1])
+            cmd := string(cmd)
+            s := buf[:16]
+            if _, err := c.Read(s); err != nil {
+                logger.Error("read put size err", zap.Error(err))
                 return
             }
-            read += num
-        }
-        file.Close()
-        logger.Debug("receive file success", zap.String("file", filename))
 
-    case 't':
-        switch cmd[1] {
-        case 's':
-            id := buf[:32]
-            if _, err := c.Read(id); err != nil {
-                logger.Error("read transaction err", zap.Error(err))
+            size, err := strconv.ParseInt(string(s), 16, 32)
+            if err != nil {
+                logger.Error("parse put size err", zap.Error(err))
                 return
             }
-            trx.Guid = hex.EncodeToString(id[:16])
-            trx.Hash = hex.EncodeToString(id[16:])
-            logger.Debug("transaction start", zap.String("guid", trx.Guid), zap.String("hash", trx.Hash))
-        case 'e':
-            logger.Debug("transaction end", zap.String("guid", trx.Guid), zap.String("hash", trx.Hash))
+
+            logger.Debug("put",zap.String("cmd", cmd), zap.String("guid", trx.Guid), zap.String("hash", trx.Hash))
+
+            dir := path.Join(config.Path, trx.Guid[:2])
+            if _, err := os.Stat(dir); err != nil || os.IsNotExist(err) { os.MkdirAll(dir, 0700) }
+            filename := path.Join(dir, trx.Guid + "-" + trx.Hash + "." + t.extension())
+            file, err := os.OpenFile(filename, os.O_CREATE, 0700)
+            if err != nil {
+                logger.Error("create file err", zap.String("file", filename), zap.Error(err))
+                return
+            }
+
+            read := 0
+            for size := int(size); read < size; {
+                num := len(buf)
+                if size - read < num { num = size - read }
+                b := buf[:num]
+                if _, err := c.Read(b); err != nil {
+                    file.Close()
+                    logger.Error("read body err", zap.Int("read", read), zap.Int("size", size), zap.Error(err))
+                    os.Remove(filename)
+                    return
+                }
+                read += num
+            }
+            file.Close()
+            logger.Debug("receive success", zap.Int("size", int(size)), zap.Int("read", read), zap.String("file", filename))
+
+        case 't':
+            switch cmd[1] {
+            case 's':
+                id := buf[:32]
+                if _, err := c.Read(id); err != nil {
+                    logger.Error("read transaction err", zap.Error(err))
+                    return
+                }
+                trx.Guid = hex.EncodeToString(id[:16])
+                trx.Hash = hex.EncodeToString(id[16:])
+                logger.Debug("transaction start", zap.String("guid", trx.Guid), zap.String("hash", trx.Hash))
+            case 'e':
+                logger.Debug("transaction end", zap.String("guid", trx.Guid), zap.String("hash", trx.Hash))
+            }
+        default:
+            logger.Error("unsupported command", zap.String("cmd", string(cmd)))
+            return
         }
-    default:
-        logger.Error("unsupported command", zap.String("cmd", string(cmd)))
-        return
     }
+
+
 
 }
