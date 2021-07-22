@@ -64,7 +64,7 @@ func (s *CacheServer) Listen() error {
     for {
         c, err := listener.Accept()
         if err != nil {
-            logger.Error(c.RemoteAddr().String(), zap.Error(err))
+            logger.Error("connection err", zap.String("addr", c.RemoteAddr().String()), zap.Error(err))
             continue
         }
 
@@ -82,7 +82,7 @@ func (s *CacheServer) Send(c net.Conn, event chan *Context) {
             elapse := time.Now().Sub(ts).Seconds()
             speed := float64(dsize) / elapse
             logger.Info("closed w", zap.String("addr", addr), zap.Int64("size", dsize), zap.Float64("speed", speed), zap.Float64("elapse", elapse))
-        } else { logger.Info("closed", zap.String("addr", addr)) }
+        } else { logger.Info("closed w", zap.String("addr", addr)) }
     }()
 
     buf := make([]byte, 1280)
@@ -145,7 +145,8 @@ func (s *CacheServer) Send(c net.Conn, event chan *Context) {
 }
 
 func (s *CacheServer) Handle(c net.Conn) {
-    logger.Info("connected", zap.String("addr", c.RemoteAddr().String()))
+    addr := c.RemoteAddr().String()
+    logger.Info("connected", zap.String("addr", addr))
     event := make(chan *Context)
     go s.Send(c, event)
 
@@ -156,8 +157,8 @@ func (s *CacheServer) Handle(c net.Conn) {
         if usize > 0 {
             elapse := time.Now().Sub(ts).Seconds()
             speed := float64(usize) / elapse
-            logger.Info("closed r", zap.String("addr", c.RemoteAddr().String()), zap.Int64("size", usize), zap.Float64("speed", speed), zap.Float64("elapse", elapse))
-        }
+            logger.Info("closed r", zap.String("addr", addr), zap.Int64("size", usize), zap.Float64("speed", speed), zap.Float64("elapse", elapse))
+        } else { logger.Info("closed r", zap.String("addr", addr)) }
     }()
 
     buf := make([]byte, 1024)
