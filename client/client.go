@@ -12,6 +12,7 @@ import (
 	rand2 "math/rand"
 	"net"
 	"os"
+	"time"
 )
 
 type Session struct {
@@ -138,6 +139,7 @@ func (s *Session) Upload() (*Entity, error) {
 	ent.Hash = id[16:]
 	rand.Read(ent.Hash)
 	if err := s.STrx(id); err != nil {return nil, err}
+	rand2.Seed(time.Now().Unix())
 	size := (16<<10) + int64(rand2.Intn(2<<20))
 	b := make([]byte, 1024)
 	{
@@ -146,29 +148,27 @@ func (s *Session) Upload() (*Entity, error) {
 
 		h := sha256.New()
 		f := io.MultiWriter(w, h)
-		s.Put(server.RequestTypeBin, size, r)
-
 		go func() {
 			defer w.Close()
 			s.Write(b, size, f)
 		}()
 
+		s.Put(server.RequestTypeBin, size, r)
 		ent.Asha = h.Sum(nil)
 	}
-	if rand2.Int() % 2 == 0 {
+	if rand2.Int() % 3 > 0 {
 		r, w, err := os.Pipe()
 		if err != nil {return nil, err }
 
 		size := size / 10
 		h := sha256.New()
 		f := io.MultiWriter(w, h)
-		s.Put(server.RequestTypeInf, size, r)
-
 		go func() {
 			defer w.Close()
 			s.Write(b, size, f)
 		}()
 
+		s.Put(server.RequestTypeInf, size, r)
 		ent.Isha = h.Sum(nil)
 	}
 
