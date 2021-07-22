@@ -75,7 +75,7 @@ func (s *CacheServer) Handle(c net.Conn) {
         c.Close()
         elapse := time.Now().Sub(ts).Seconds()
         speed := float64(down) / elapse
-        logger.Info("closed", zap.String("client", c.RemoteAddr().String()), zap.Int64("up", up), zap.Int64("down", down), zap.Float64("speed", speed), zap.Float64("elapse", elapse))
+        logger.Info("closed", zap.String("client", c.RemoteAddr().String()), zap.Int64("usize", up), zap.Int64("dsize", down), zap.Float64("speed", speed), zap.Float64("elapse", elapse))
     }()
     logger.Info("connected", zap.String("client", c.RemoteAddr().String()))
 
