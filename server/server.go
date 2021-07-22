@@ -46,9 +46,6 @@ type Entity struct {
 type Context struct {
     Entity
     command [2]byte
-    ts time.Time
-    usize int64
-    dsize int64
     id [32]byte
 }
 
@@ -114,7 +111,7 @@ func (s *CacheServer) Send(c net.Conn, event chan *Context) {
 
             hdr.Write(ctx.id[:]) /* guid + hash */
             if _, err := c.Write(hdr.Bytes()); err != nil { logger.Error("send get + err", zap.Error(err));return }
-            ctx.dsize += int64(hdr.Len())
+            dsize += int64(hdr.Len())
             if !exist {continue}
 
             logger.Debug("get >>>", zap.String("cmd", cmd), zap.String("guid", ctx.guid), zap.Int64("size", fi.Size()))
