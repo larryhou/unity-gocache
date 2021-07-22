@@ -208,7 +208,7 @@ func (s *CacheServer) Handle(c net.Conn) {
 
             dir := path.Join(s.Path, trx.guid[:2])
             if _, err := os.Stat(dir); err != nil || os.IsNotExist(err) { os.MkdirAll(dir, 0700) }
-            filename := path.Join(dir, trx.guid+ "-" + trx.hash+ "." + t.extension())
+            filename := path.Join(dir, trx.guid + "-" + trx.hash + "." + t.extension())
             file, err := os.OpenFile(filename, os.O_CREATE | os.O_WRONLY, 0700)
             if err != nil {logger.Error("put create file err", zap.String("file", filename), zap.Error(err));return}
             read, write := int64(0), int64(0)
