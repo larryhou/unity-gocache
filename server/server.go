@@ -138,7 +138,7 @@ func (s *CacheServer) Send(c net.Conn, event chan *Context) {
                 } else { sent += int64(n) }
             }
             file.Close()
-            if sent == fi.Size() { logger.Debug("get success", zap.String("cmd", cmd), zap.Int64("size", fi.Size()), zap.Int64("sent", sent), zap.String("file", filename)) }
+            if sent == fi.Size() { logger.Debug("get success", zap.String("cmd", cmd), zap.Int64("sent", sent), zap.String("file", filename)) }
             dsize += sent
         }
     }
@@ -204,7 +204,7 @@ func (s *CacheServer) Handle(c net.Conn) {
             usize += int64(len(b))
             size, err := strconv.ParseInt(string(b), 16, 32)
             if err != nil {logger.Error("put parse size err", zap.Error(err));return}
-            logger.Debug("put",zap.String("cmd", cmd), zap.String("guid", trx.guid), zap.String("hash", trx.hash))
+            logger.Debug("put", zap.String("cmd", cmd), zap.String("guid", trx.guid), zap.Int64("size", size))
 
             dir := path.Join(s.Path, trx.guid[:2])
             if _, err := os.Stat(dir); err != nil || os.IsNotExist(err) { os.MkdirAll(dir, 0700) }
@@ -230,7 +230,7 @@ func (s *CacheServer) Handle(c net.Conn) {
                 } else { write += int64(n) }
             }
             file.Close()
-            if write == size { logger.Debug("put success", zap.Int64("size", size), zap.Int64("write", write), zap.String("file", filename))}
+            if write == size { logger.Debug("put success", zap.String("cmd", cmd), zap.Int64("write", write), zap.String("file", filename))}
             usize += read
 
         case 't':
