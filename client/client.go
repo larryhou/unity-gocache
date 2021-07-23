@@ -129,6 +129,7 @@ type Entity struct {
 	Hash []byte
 	Asha []byte
 	Isha []byte
+	Size int64
 }
 
 func (s *Session) Upload() (*Entity, error) {
@@ -141,6 +142,7 @@ func (s *Session) Upload() (*Entity, error) {
 	if err := s.STrx(id); err != nil {return nil, err}
 	rand2.Seed(time.Now().Unix())
 	size := (16<<10) + int64(rand2.Intn(2<<20))
+	ent.Size = size
 	b := make([]byte, 1024)
 	{
 		r, w, err := os.Pipe()
