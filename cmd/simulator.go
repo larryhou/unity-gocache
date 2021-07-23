@@ -50,7 +50,7 @@ func main() {
 	flag.IntVar(&environ.port, "port", 9966, "server port")
 	flag.Parse()
 
-	if l, err := zap.NewDevelopment(); err != nil {panic(err)} else {logger = l}
+	if v, err := zap.NewDevelopment(); err != nil {panic(err)} else {logger = v}
 
 	environ.idle = make(chan *Context)
 	environ.closed = make(chan struct{})
