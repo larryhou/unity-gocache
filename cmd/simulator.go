@@ -15,9 +15,12 @@ import (
 )
 
 var environ struct{
-	secret string
-	addr string
-	port int
+	secret  string
+	count   int
+	ratio   float64
+	addr    string
+	port    int
+	cmdPort int
 
 	queue   []*Context
 	library []*client.Entity
@@ -45,9 +48,15 @@ func (c *Context) Close() error {
 var logger *zap.Logger
 
 func main() {
+	flag.IntVar(&environ.count, "count", 10, "initial client count")
+	flag.Float64Var(&environ.ratio, "ratio", 0.15, "closing ratio[0,1] after upload/download")
 	flag.StringVar(&environ.secret, "secret", "larryhou", "command secret")
 	flag.StringVar(&environ.addr, "addr", "127.0.0.1", "server address")
 	flag.IntVar(&environ.port, "port", 9966, "server port")
+	flag.IntVar(&environ.cmdPort, "cmd-port", 19966, "local command server port")
+	if environ.ratio > 1.0 { environ.ratio = 1.0 }
+	if environ.ratio < 0.0 { environ.ratio = 0.0 }
+
 	flag.Parse()
 
 	if v, err := zap.NewDevelopment(); err != nil {panic(err)} else {logger = v}
@@ -64,7 +73,7 @@ func main() {
 				if environ.cutouts > 0 {
 					environ.cutouts--
 					ctx.Close()
-				} else if num % 100 > 15 {ctx.work <- num} else {
+				} else if float64(num % 100)/100 > environ.ratio {ctx.work <- num} else {
 					ctx.Close()
 					environ.closed <- struct{}{} /* notify close event */
 				}
@@ -83,8 +92,8 @@ func main() {
 		}
 	}()
 
-	addClients(10)
-	server, err := net.Listen("tcp", ":19966")
+	addClients(environ.count)
+	server, err := net.Listen("tcp", fmt.Sprintf(":%d", environ.cmdPort))
 	if err != nil { panic(err) }
 
 	for {
@@ -137,8 +146,13 @@ func handle(c net.Conn) {
 		switch cmd {
 		case "add":
 			if num, err := readInt(c); err != nil {return} else {go addClients(num)}
-		case "sub":
-			if num, err := readInt(c); err != nil {return} else {go subClients(num)}
+		case "cut":
+			if num, err := readInt(c); err != nil {return} else {go cutClients(num)}
+		case "rat":
+			if num, err := readInt(c); err != nil {return} else {
+				if num > 100 { num = 100 } else if num < 0 { num = 0 }
+				environ.ratio = float64(num) / 100
+			}
 		default: return
 		}
 	}
@@ -189,6 +203,6 @@ func runClient(s *client.Session) {
 	}
 }
 
-func subClients(num int) {
+func cutClients(num int) {
 	if num > 0 { environ.cutouts = num }
 }
