@@ -6,6 +6,7 @@ import (
     "encoding/hex"
     "fmt"
     "go.uber.org/zap"
+    "go.uber.org/zap/zapcore"
     "io"
     "math/rand"
     "net"
@@ -16,12 +17,6 @@ import (
 )
 
 var logger *zap.Logger
-
-func init() {
-    l, err := zap.NewDevelopment()
-    if err != nil { panic(err) }
-    logger = l
-}
 
 type RequestType byte
 const (
@@ -51,9 +46,10 @@ type Context struct {
 }
 
 type CacheServer struct {
-    Port int
-    Path string
-    temp string
+    Port     int
+    Path     string
+    LogLevel int
+    temp     string
 }
 
 func (s *CacheServer) Listen() error {
@@ -61,6 +57,11 @@ func (s *CacheServer) Listen() error {
     if err != nil {return err}
 
     s.temp = path.Join(s.Path, "temp")
+    {
+        l, err := zap.NewDevelopment(zap.IncreaseLevel(zapcore.Level(s.LogLevel)))
+        if err != nil { panic(err) }
+        logger = l
+    }
 
     for {
         c, err := listener.Accept()
@@ -224,22 +225,22 @@ func (s *CacheServer) Handle(c net.Conn) {
                 b := buf[:num]
                 if n, err := c.Read(b); err != nil {
                     file.Close()
-                    logger.Error("put read body err", zap.Int64("read", read), zap.Int64("size", size), zap.Error(err))
                     os.Remove(file.Name())
+                    logger.Error("put read body err", zap.Int64("read", read), zap.Int64("size", size), zap.Error(err))
                     return
                 } else {
                     read += int64(n)
                     if n, err := file.Write(b[:n]); err != nil {
                         file.Close()
-                        logger.Error("put write cache err", zap.Int64("write", write), zap.Int64("size", size), zap.Error(err))
                         os.Remove(file.Name())
+                        logger.Error("put write cache err", zap.Int64("write", write), zap.Int64("size", size), zap.Error(err))
                         return
                     } else { write += int64(n) }
                 }
             }
             file.Close()
             if err := os.Rename(file.Name(), filename); err != nil {
-                if write == size { logger.Debug("put failure", zap.String("cmd", cmd), zap.Int64("write", write), zap.String("file", filename), zap.Error(err))}
+                if write == size { logger.Error("put failure", zap.String("cmd", cmd), zap.Int64("write", write), zap.String("file", filename), zap.Error(err))}
                 return
             }
             if write == size { logger.Debug("put success", zap.String("cmd", cmd), zap.Int64("write", write), zap.String("file", filename))}

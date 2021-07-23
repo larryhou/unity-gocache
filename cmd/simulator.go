@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/larryhou/unity-gocache/client"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"math/rand"
 	"net"
 	"strconv"
@@ -50,14 +51,22 @@ func (c *Context) Kill() {
 }
 
 func (c *Context) Close() error {
-	c.Kill()
-	if c.u != nil {return c.u.Close()}
+	if c.u != nil {
+		u := c.u
+		go func() {
+			time.Sleep(time.Second) /* make sure server has received all data */
+			c.Kill()
+			u.Close()
+		}()
+		c.u = nil
+	}
 	return nil
 }
 
 var logger *zap.Logger
 
 func main() {
+	level := 0
 	flag.IntVar(&environ.count, "count", 10, "initial client count")
 	flag.Float64Var(&environ.close, "close", 0.15, "close ratio[0,1] after upload/download")
 	flag.StringVar(&environ.secret, "secret", "larryhou", "command secret")
@@ -65,9 +74,10 @@ func main() {
 	flag.StringVar(&environ.addr, "addr", "127.0.0.1", "server address")
 	flag.IntVar(&environ.port, "port", 9966, "server port")
 	flag.IntVar(&environ.cmdPort, "cmd-port", 19966, "local command server port")
+	flag.IntVar(&level, "log-level", 0, "log level debug=-1 info=0 warn=1 error=2 dpanic=3 panic=4 fatal=5")
 	flag.Parse()
 
-	if v, err := zap.NewDevelopment(); err != nil {panic(err)} else {logger = v}
+	if v, err := zap.NewDevelopment(zap.IncreaseLevel(zapcore.Level(level))); err != nil {panic(err)} else {logger = v}
 
 	environ.idle = make(chan *Context)
 	environ.closed = make(chan struct{})
@@ -92,7 +102,7 @@ func main() {
 					logger.Debug("assign", zap.Uintptr("ctx", ctx.Uintptr()), zap.Int("num", num))
 					ctx.work <- num
 				} else {
-					ctx.Kill()
+					ctx.Close()
 					go func() {
 						environ.closed <- struct{}{} /* notify close event */
 						logger.Debug("quit", zap.Uintptr("ctx", ctx.Uintptr()), zap.Float64("close", environ.close), zap.Float64("ratio", 1 - float64(num%100)/100))
