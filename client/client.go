@@ -67,8 +67,10 @@ func (u *Unity) Get(id []byte, t server.RequestType, w io.Writer) error {
 		if size - read < num { num = size - read }
 		b := u.b[:num]
 		if n, err := u.c.Read(b); err != nil {return err} else {
-			if n > 0 { if _, err := w.Write(b[:n]); err != nil {return err} } else {continue}
 			read += int64(n)
+			if n <= 0 {continue} else {
+				if _, err := w.Write(b[:n]); err != nil {return err}
+			}
 		}
 	}
 	return nil
@@ -193,15 +195,16 @@ func (u *Unity) Download(ent *Entity) error {
 		h := sha256.New()
 		w := io.MultiWriter(&c, h)
 		if err := u.Get(id, server.RequestTypeBin, w); err != nil {return err}
+		if c == 0 { return nil }
 		if int64(c) != ent.Size {return fmt.Errorf("size not match: %d != %d", c, ent.Size)}
 		s := h.Sum(nil)
-		if !bytes.Equal(s, ent.Asha[:32]) {return fmt.Errorf("asha not match: %s != %s", hex.EncodeToString(s), hex.EncodeToString(ent.Asha))}
+		if !bytes.Equal(s, ent.Asha[:32]) {panic(fmt.Errorf("asha not match: %s != %s %s %d", hex.EncodeToString(s), hex.EncodeToString(ent.Asha), hex.EncodeToString(ent.Guid), c))}
 	}
 	if len(ent.Isha) > 0 {
 		h := sha256.New()
 		if err := u.Get(id, server.RequestTypeInf, h); err != nil {return err}
 		s := h.Sum(nil)
-		if !bytes.Equal(s, ent.Isha[:32]) {return fmt.Errorf("isha not match: %s != %s", hex.EncodeToString(s), hex.EncodeToString(ent.Isha))}
+		if !bytes.Equal(s, ent.Isha[:32]) {panic(fmt.Errorf("isha not match: %s != %s %s", hex.EncodeToString(s), hex.EncodeToString(ent.Isha), hex.EncodeToString(ent.Guid)))}
 	}
 
 	return nil

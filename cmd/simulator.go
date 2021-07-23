@@ -44,9 +44,13 @@ func (c *Context) Uintptr() uintptr {
 	return uintptr(unsafe.Pointer(c))
 }
 
-func (c *Context) Close() error {
+func (c *Context) Kill() {
 	close(c.entpsh)
 	close(c.work)
+}
+
+func (c *Context) Close() error {
+	c.Kill()
 	if c.u != nil {return c.u.Close()}
 	return nil
 }
@@ -88,9 +92,11 @@ func main() {
 					logger.Debug("assign", zap.Uintptr("ctx", ctx.Uintptr()), zap.Int("num", num))
 					ctx.work <- num
 				} else {
-					logger.Debug("close", zap.Uintptr("ctx", ctx.Uintptr()), zap.Float64("close", environ.close), zap.Float64("ratio", 1 - float64(num%100)/100))
-					ctx.Close()
-					environ.closed <- struct{}{} /* notify close event */
+					ctx.Kill()
+					go func() {
+						environ.closed <- struct{}{} /* notify close event */
+						logger.Debug("quit", zap.Uintptr("ctx", ctx.Uintptr()), zap.Float64("close", environ.close), zap.Float64("ratio", 1 - float64(num%100)/100))
+					}()
 				}
 			case ctx := <-environ.entreq:
 				logger.Debug("ENTREQ", zap.Uintptr("ctx", ctx.Uintptr()))
@@ -98,8 +104,10 @@ func main() {
 					if len(environ.library) > 0 {
 						rand.Seed(time.Now().UnixNano())
 						n := rand.Intn(len(environ.library))
-						ctx.entpsh <- environ.library[n]
-						logger.Debug("send entity", zap.Uintptr("ctx", ctx.Uintptr()))
+						go func() {
+							ctx.entpsh <- environ.library[n]
+							logger.Debug("send entity", zap.Uintptr("ctx", ctx.Uintptr()))
+						}()
 						break
 					}
 					time.Sleep(time.Second)
@@ -187,11 +195,12 @@ func addClients(num int) {
 		u := &client.Unity{Addr: environ.addr, Port: environ.port}
 		if err := u.Connect(); err != nil {
 			u.Close()
-			environ.closed <- struct{}{}
-			logger.Error("connect err", zap.Error(err))
+			go func() {
+				environ.closed <- struct{}{}
+				logger.Error("connect err", zap.Error(err))
+			}()
 			continue
 		}
-
 		go runClient(u)
 	}
 }
