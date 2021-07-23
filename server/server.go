@@ -121,26 +121,19 @@ func (s *CacheServer) Send(c net.Conn, event chan *Context) {
             w := io.MultiWriter(h, c)
             file, err := os.Open(filename)
             if err != nil {logger.Error("get read cache err", zap.String("file", filename), zap.Error(err));return }
-            sent, read := int64(0), int64(0)
+            sent := int64(0)
             for size := fi.Size(); sent < size; {
                 num := int64(len(buf))
                 if size - sent < num { num = size - sent }
                 b := buf[:num]
-                if n, err := file.Read(b); err != nil {
-                    file.Close()
-                    logger.Error("get read body err", zap.Int64("read", read), zap.Int64("size", size), zap.Error(err))
-                    return
-                } else {
-                    read += int64(n)
+                if n, err := file.Read(b); err != nil {file.Close();return} else {
+                    sent += int64(n)
                     for b := b[:n]; len(b) > 0; {
                         if m, err := w.Write(b); err != nil {
                             file.Close()
                             logger.Error("get sent body err", zap.Int64("sent", sent), zap.Int64("size", size), zap.Error(err))
                             return
-                        } else {
-                            sent += int64(m)
-                            b = b[m:]
-                        }
+                        } else { b = b[m:] }
                     }
                 }
             }
@@ -223,28 +216,20 @@ func (s *CacheServer) Handle(c net.Conn) {
             h := sha256.New()
             w := io.MultiWriter(file, h)
             if err != nil {logger.Error("put create file err", zap.String("file", filename), zap.Error(err));return}
-            read, write := int64(0), int64(0)
-            for read < size {
+            write := int64(0)
+            for write < size {
                 num := int64(len(buf))
-                if size - read < num { num = size - read }
+                if size - write < num { num = size - write }
                 b := buf[:num]
-                if n, err := c.Read(b); err != nil {
-                    file.Close()
-                    os.Remove(file.Name())
-                    logger.Error("put read body err", zap.Int64("read", read), zap.Int64("size", size), zap.Error(err))
-                    return
-                } else {
-                    read += int64(n)
+                if n, err := c.Read(b); err != nil {file.Close();os.Remove(file.Name());return} else {
+                    write += int64(n)
                     for b = b[:n]; len(b) > 0; {
                         if m, err := w.Write(b); err != nil {
                             file.Close()
                             os.Remove(file.Name())
                             logger.Error("put write cache err", zap.Int64("write", write), zap.Int64("size", size), zap.Error(err))
                             return
-                        } else {
-                            write += int64(m)
-                            b = b[m:]
-                        }
+                        } else { b = b[m:] }
                     }
                 }
             }
@@ -254,7 +239,7 @@ func (s *CacheServer) Handle(c net.Conn) {
                 return
             }
             if write == size { logger.Debug("put success", zap.String("cmd", cmd), zap.Int64("write", write), zap.String("file", filename), zap.String("sha", hex.EncodeToString(h.Sum(nil))))}
-            usize += read
+            usize += write
 
         case 't':
             switch cmd[1] {

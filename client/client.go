@@ -118,8 +118,8 @@ func (u *Unity) ETrx() error {
 	return err
 }
 
-func (u *Unity) Write(b []byte, size int64, w io.Writer) error {
-	buf := make([]byte, 1024)
+func (u *Unity) Pump(size int64, w io.Writer) error {
+	buf := make([]byte, 1280)
 	sent := int64(0)
 	for sent < size {
 		num := int64(len(buf))
@@ -153,18 +153,14 @@ func (u *Unity) Upload() (*Entity, error) {
 	rand2.Seed(time.Now().UnixNano())
 	size := (16<<10) + int64(rand2.Intn(2<<20))
 	ent.Size = size
-	b := make([]byte, 1024)
 	{
-		size := size
 		r, w, err := os.Pipe()
 		if err != nil {return nil, err }
 		go func() {
 			defer w.Close()
 			h := sha256.New()
-			var c Counter
-			f := io.MultiWriter(w, h, &c)
-			if err := u.Write(b, size, f); err != nil { panic(err) }
-			if int64(c) != size {panic(c)}
+			f := io.MultiWriter(w, h)
+			if err := u.Pump(size, f); err != nil {return}
 			ent.Asha = h.Sum(nil)
 		}()
 
@@ -173,19 +169,17 @@ func (u *Unity) Upload() (*Entity, error) {
 	}
 	if rand2.Int() % 3 > 0 {
 		r, w, err := os.Pipe()
-		if err != nil {return nil, err }
+		if err != nil {return nil, err}
 		size := size / 10
-
 		go func() {
 			defer w.Close()
 			h := sha256.New()
 			f := io.MultiWriter(w, h)
-			u.Write(b, size, f)
+			if err := u.Pump(size, f); err != nil {return}
 			ent.Isha = h.Sum(nil)
 		}()
 
 		u.Put(server.RequestTypeInf, size, r)
-
 	}
 
 	return ent, u.ETrx()
@@ -220,6 +214,5 @@ func (u *Unity) Download(ent *Entity) error {
 		s := h.Sum(nil)
 		if !bytes.Equal(s, ent.Isha[:32]) {panic(fmt.Errorf("isha not match: %s != %s %s", hex.EncodeToString(s), hex.EncodeToString(ent.Isha), hex.EncodeToString(ent.Guid)))}
 	}
-
 	return nil
 }
