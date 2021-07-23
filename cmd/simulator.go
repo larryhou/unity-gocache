@@ -77,9 +77,9 @@ func main() {
 					ctx.Close()
 					environ.closed <- struct{}{} /* notify close event */
 				}
-			case <- environ.closed: go addClients(1)
+			case <-environ.closed: go addClients(1)
 			case ent := <-environ.entity: environ.library = append(environ.library, ent)
-			case ctx := <- environ.entreq:
+			case ctx := <-environ.entreq:
 				for {
 					if len(environ.library) > 0 {
 						n := rand.Intn(len(environ.library))
@@ -178,7 +178,7 @@ func runClient(s *client.Session) {
 	environ.idle <- ctx
 	for {
 		select {
-		case num := <- ctx.work:
+		case num := <-ctx.work:
 			if num == 0 {return}
 			if num % 10 == 0 {
 				if ent, err := s.Upload(); err == nil {
