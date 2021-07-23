@@ -132,11 +132,13 @@ func (s *CacheServer) Send(c net.Conn, event chan *Context) {
                     file.Close()
                     logger.Error("get read body err", zap.Int64("read", read), zap.Int64("size", size), zap.Error(err))
                     return
-                } else { read += int64(n) }
-                if n, err := c.Write(b); err != nil {
-                    logger.Error("get sent body err", zap.Int64("sent", sent), zap.Int64("size", size), zap.Error(err))
-                    return
-                } else { sent += int64(n) }
+                } else {
+                    read += int64(n)
+                    if n, err := c.Write(b[:n]); err != nil {
+                        logger.Error("get sent body err", zap.Int64("sent", sent), zap.Int64("size", size), zap.Error(err))
+                        return
+                    } else { sent += int64(n) }
+                }
             }
             file.Close()
             if sent == fi.Size() { logger.Debug("get success", zap.String("cmd", cmd), zap.Int64("sent", sent), zap.String("file", filename)) }
@@ -225,13 +227,15 @@ func (s *CacheServer) Handle(c net.Conn) {
                     logger.Error("put read body err", zap.Int64("read", read), zap.Int64("size", size), zap.Error(err))
                     os.Remove(file.Name())
                     return
-                } else { read += int64(n) }
-                if n, err := file.Write(b); err != nil {
-                    file.Close()
-                    logger.Error("put write cache err", zap.Int64("write", write), zap.Int64("size", size), zap.Error(err))
-                    os.Remove(file.Name())
-                    return
-                } else { write += int64(n) }
+                } else {
+                    read += int64(n)
+                    if n, err := file.Write(b[:n]); err != nil {
+                        file.Close()
+                        logger.Error("put write cache err", zap.Int64("write", write), zap.Int64("size", size), zap.Error(err))
+                        os.Remove(file.Name())
+                        return
+                    } else { write += int64(n) }
+                }
             }
             file.Close()
             if err := os.Rename(file.Name(), filename); err != nil {

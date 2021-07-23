@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 )
 
 var environ struct{
@@ -39,6 +40,10 @@ type Context struct {
 	u      *client.Unity
 }
 
+func (c *Context) Uintptr() uintptr {
+	return uintptr(unsafe.Pointer(c))
+}
+
 func (c *Context) Close() error {
 	close(c.entpsh)
 	close(c.work)
@@ -63,30 +68,45 @@ func main() {
 	environ.idle = make(chan *Context)
 	environ.closed = make(chan struct{})
 	environ.entreq = make(chan *Context)
+	environ.entity = make(chan *client.Entity)
 
 	go func() {
 		for {
 			select {
+			case ent := <-environ.entity:
+				logger.Debug("ENTITY", zap.String("guid", hex.EncodeToString(ent.Guid)))
+				environ.library = append(environ.library, ent)
 			case ctx := <-environ.idle:
+				rand.Seed(time.Now().UnixNano())
 				num := rand.Int()
+				logger.Debug("IDLE", zap.Uintptr("ctx", ctx.Uintptr()), zap.Int("num", num))
 				if environ.cutouts > 0 {
+					logger.Debug("cut", zap.Uintptr("ctx", ctx.Uintptr()), zap.Int("num", num))
 					environ.cutouts--
 					ctx.Close()
-				} else if float64(num%100)/100 > environ.close {ctx.work <- num} else {
+				} else if float64(num%10000)/10000 > environ.close {
+					logger.Debug("assign", zap.Uintptr("ctx", ctx.Uintptr()), zap.Int("num", num))
+					ctx.work <- num
+				} else {
+					logger.Debug("close", zap.Uintptr("ctx", ctx.Uintptr()), zap.Float64("close", environ.close), zap.Float64("ratio", 1 - float64(num%100)/100))
 					ctx.Close()
 					environ.closed <- struct{}{} /* notify close event */
 				}
-			case <-environ.closed: go addClients(1)
-			case ent := <-environ.entity: environ.library = append(environ.library, ent)
 			case ctx := <-environ.entreq:
+				logger.Debug("ENTREQ", zap.Uintptr("ctx", ctx.Uintptr()))
 				for {
 					if len(environ.library) > 0 {
+						rand.Seed(time.Now().UnixNano())
 						n := rand.Intn(len(environ.library))
 						ctx.entpsh <- environ.library[n]
+						logger.Debug("send entity", zap.Uintptr("ctx", ctx.Uintptr()))
 						break
 					}
 					time.Sleep(time.Second)
 				}
+			case <-environ.closed:
+				logger.Debug("CLOSED")
+				go addClients(1)
 			}
 		}
 	}()
@@ -179,29 +199,51 @@ func addClients(num int) {
 func runClient(u *client.Unity) {
 	defer u.Close()
 	ctx := &Context{u: u, work: make(chan int), entpsh: make(chan *client.Entity)}
-	environ.idle <- ctx
+	logger.Debug("client", zap.Uintptr("ctx", ctx.Uintptr()))
+	go func() {
+		environ.idle <- ctx
+		logger.Debug("push idle n", zap.Uintptr("ctx", ctx.Uintptr()))
+	}()
+
 	for {
 		select {
 		case num := <-ctx.work:
 			if num == 0 {return}
-			if float64(num%100)/100 > environ.down {
+			logger.Debug("++++", zap.Uintptr("ctx", ctx.Uintptr()), zap.Int("num", num))
+			if float64(num%10000)/10000 > environ.down || len(environ.library) == 0 {
+				logger.Debug("upload", zap.Uintptr("ctx", ctx.Uintptr()))
 				if ent, err := u.Upload(); err == nil {
-					environ.entity <- ent
-					environ.idle <- ctx
+					logger.Debug("upload", zap.Uintptr("ctx", ctx.Uintptr()), zap.String("guid", hex.EncodeToString(ent.Guid)))
+					go func() {
+						environ.idle <- ctx
+						logger.Debug("push idle u", zap.Uintptr("ctx", ctx.Uintptr()))
+					}()
+					go func() {
+						environ.entity <- ent
+						logger.Debug("push entity", zap.Uintptr("ctx", ctx.Uintptr()))
+					}()
+
 				} else {
 					logger.Error("upload err: %v", zap.Error(err))
 				}
 			} else {
-				environ.entreq <- ctx /* send download request */
+				go func() {
+					environ.entreq <- ctx /* send download request */
+					logger.Debug("down req")
+				}()
 			}
 		case ent := <-ctx.entpsh:
 			if ent == nil {return}
+			logger.Debug("down", zap.Uintptr("ctx", ctx.Uintptr()), zap.String("guid", hex.EncodeToString(ent.Guid)))
 			if err := u.Download(ent); err != nil {
-				logger.Error("download err: %v",
+				logger.Error("down err: %v",
 					zap.String("guid", hex.EncodeToString(ent.Guid)),
 					zap.String("hash", hex.EncodeToString(ent.Hash)), zap.Error(err))
 			} else {
-				environ.idle <- ctx
+				go func() {
+					environ.idle <- ctx
+					logger.Debug("push idle d", zap.Uintptr("ctx", ctx.Uintptr()))
+				}()
 			}
 		}
 	}

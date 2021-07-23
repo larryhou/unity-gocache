@@ -54,20 +54,22 @@ func (u *Unity) Get(id []byte, t server.RequestType, w io.Writer) error {
 		_, err := u.c.Read(u.b[:32])
 		return err
 	}
-	if cmd[0] != '+' || cmd[1] != byte(t) {return fmt.Errorf("rsp cmd not match: %s", string(cmd))}
+	if cmd[0] != '+' || cmd[1] != byte(t) {return fmt.Errorf("get cmd not match: %s", string(cmd))}
 	sb := u.b[:16]
 	if _, err := u.c.Read(sb); err != nil {return err}
-	if _, err := u.c.Read(u.b[:32]); err != nil {return err}
 	if _, err := hex.Decode(sb, sb); err != nil {return err}
 	size := int64(binary.BigEndian.Uint64(sb))
+	if _, err := u.c.Read(u.b[:32]); err != nil {return err}
+	if !bytes.Equal(u.b[:32], id) {return fmt.Errorf("cache id not match")}
 	read := int64(0)
 	for read < size {
 		num := int64(len(u.b))
 		if size - read < num { num = size - read }
 		b := u.b[:num]
-		if _, err := u.c.Read(b); err != nil {return err}
-		if _, err := w.Write(b); err != nil {return err}
-		read += num
+		if n, err := u.c.Read(b); err != nil {return err} else {
+			if n > 0 { if _, err := w.Write(b[:n]); err != nil {return err} } else {continue}
+			read += int64(n)
+		}
 	}
 	return nil
 }
@@ -87,9 +89,10 @@ func (u *Unity) Put(t server.RequestType, size int64, r io.Reader) error {
 		num := int64(len(u.b))
 		if size - sent < num { num = size - sent }
 		b := u.b[:num]
-		if _, err := r.Read(b); err != nil {return err}
-		if _, err := u.c.Write(b); err != nil {return err}
-		sent += num
+		if n, err := r.Read(b); err != nil {return err} else {
+			if n > 0 {if _, err := u.c.Write(b[:n]); err != nil {return err}}
+			sent += int64(n)
+		}
 	}
 	return nil
 }
@@ -97,7 +100,7 @@ func (u *Unity) Put(t server.RequestType, size int64, r io.Reader) error {
 func (u *Unity) STrx(id []byte) error {
 	b := bytes.NewBuffer(u.b[:0])
 	b.WriteByte('t')
-	b.WriteByte('u')
+	b.WriteByte('s')
 	b.Write(id[:32])
 	_, err := u.c.Write(b.Bytes())
 	return err
@@ -140,58 +143,65 @@ func (u *Unity) Upload() (*Entity, error) {
 	ent.Hash = id[16:]
 	rand.Read(ent.Hash)
 	if err := u.STrx(id); err != nil {return nil, err}
-	rand2.Seed(time.Now().Unix())
+	rand2.Seed(time.Now().UnixNano())
 	size := (16<<10) + int64(rand2.Intn(2<<20))
 	ent.Size = size
 	b := make([]byte, 1024)
 	{
 		r, w, err := os.Pipe()
 		if err != nil {return nil, err }
-
-		h := sha256.New()
-		f := io.MultiWriter(w, h)
 		go func() {
 			defer w.Close()
+			h := sha256.New()
+			f := io.MultiWriter(w, h)
 			u.Write(b, size, f)
+			ent.Asha = h.Sum(nil)
 		}()
 
 		u.Put(server.RequestTypeBin, size, r)
-		ent.Asha = h.Sum(nil)
 	}
 	if rand2.Int() % 3 > 0 {
 		r, w, err := os.Pipe()
 		if err != nil {return nil, err }
-
 		size := size / 10
-		h := sha256.New()
-		f := io.MultiWriter(w, h)
 		go func() {
 			defer w.Close()
+			h := sha256.New()
+			f := io.MultiWriter(w, h)
 			u.Write(b, size, f)
+			ent.Isha = h.Sum(nil)
 		}()
 
 		u.Put(server.RequestTypeInf, size, r)
-		ent.Isha = h.Sum(nil)
 	}
 
 	return ent, u.ETrx()
+}
+
+type Counter int64
+func (c *Counter) Write(p []byte) (int, error) {
+	*c += Counter(len(p))
+	return len(p), nil
 }
 
 func (u *Unity) Download(ent *Entity) error {
 	id := make([]byte, 32)
 	copy(id[:16], ent.Guid[:16])
 	copy(id[16:], ent.Hash[:16])
-
 	{
+		var c Counter
 		h := sha256.New()
-		if err := u.Get(id, server.RequestTypeBin, h); err != nil {return err}
-		if !bytes.Equal(h.Sum(nil), ent.Asha[:32]) {return fmt.Errorf("asha not match")}
+		w := io.MultiWriter(&c, h)
+		if err := u.Get(id, server.RequestTypeBin, w); err != nil {return err}
+		if int64(c) != ent.Size {return fmt.Errorf("size not match: %d != %d", c, ent.Size)}
+		s := h.Sum(nil)
+		if !bytes.Equal(s, ent.Asha[:32]) {return fmt.Errorf("asha not match: %s != %s", hex.EncodeToString(s), hex.EncodeToString(ent.Asha))}
 	}
-
 	if len(ent.Isha) > 0 {
 		h := sha256.New()
 		if err := u.Get(id, server.RequestTypeInf, h); err != nil {return err}
-		if !bytes.Equal(h.Sum(nil), ent.Isha[:32]) {return fmt.Errorf("isha not match")}
+		s := h.Sum(nil)
+		if !bytes.Equal(s, ent.Isha[:32]) {return fmt.Errorf("isha not match: %s != %s", hex.EncodeToString(s), hex.EncodeToString(ent.Isha))}
 	}
 
 	return nil
