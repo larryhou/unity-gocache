@@ -45,18 +45,10 @@ func (c *Context) Uintptr() uintptr {
 	return uintptr(unsafe.Pointer(c))
 }
 
-func (c *Context) Kill() {
+func (c *Context) Close() error {
 	close(c.entpsh)
 	close(c.work)
-}
-
-func (c *Context) Close() error {
-	if c.u != nil {
-		u := c.u
-		c.Kill()
-		u.Close()
-		c.u = nil
-	}
+	if c.u != nil {return c.u.Close()}
 	return nil
 }
 
@@ -71,7 +63,7 @@ func main() {
 	flag.StringVar(&environ.addr, "addr", "127.0.0.1", "server address")
 	flag.IntVar(&environ.port, "port", 9966, "server port")
 	flag.IntVar(&environ.cmdPort, "cmd-port", 19966, "local command server port")
-	flag.IntVar(&level, "log-level", 0, "log level debug=-1 info=0 warn=1 error=2 dpanic=3 panic=4 fatal=5")
+	flag.IntVar(&level, "log-level", -1, "log level debug=-1 info=0 warn=1 error=2 dpanic=3 panic=4 fatal=5")
 	flag.Parse()
 
 	if v, err := zap.NewDevelopment(zap.IncreaseLevel(zapcore.Level(level))); err != nil {panic(err)} else {logger = v}
