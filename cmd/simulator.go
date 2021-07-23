@@ -17,7 +17,8 @@ import (
 var environ struct{
 	secret  string
 	count   int
-	ratio   float64
+	close   float64
+	down    float64
 	addr    string
 	port    int
 	cmdPort int
@@ -49,13 +50,14 @@ var logger *zap.Logger
 
 func main() {
 	flag.IntVar(&environ.count, "count", 10, "initial client count")
-	flag.Float64Var(&environ.ratio, "ratio", 0.15, "closing ratio[0,1] after upload/download")
+	flag.Float64Var(&environ.close, "close", 0.15, "close ratio[0,1] after upload/download")
 	flag.StringVar(&environ.secret, "secret", "larryhou", "command secret")
+	flag.Float64Var(&environ.down, "down", 0.90, "download operation ratio[0,1]")
 	flag.StringVar(&environ.addr, "addr", "127.0.0.1", "server address")
 	flag.IntVar(&environ.port, "port", 9966, "server port")
 	flag.IntVar(&environ.cmdPort, "cmd-port", 19966, "local command server port")
-	if environ.ratio > 1.0 { environ.ratio = 1.0 }
-	if environ.ratio < 0.0 { environ.ratio = 0.0 }
+	if environ.close > 1.0 { environ.close = 1.0 }
+	if environ.close < 0.0 { environ.close = 0.0 }
 
 	flag.Parse()
 
@@ -73,7 +75,7 @@ func main() {
 				if environ.cutouts > 0 {
 					environ.cutouts--
 					ctx.Close()
-				} else if float64(num % 100)/100 > environ.ratio {ctx.work <- num} else {
+				} else if float64(num%100)/100 > environ.close {ctx.work <- num} else {
 					ctx.Close()
 					environ.closed <- struct{}{} /* notify close event */
 				}
@@ -148,10 +150,15 @@ func handle(c net.Conn) {
 			if num, err := readInt(c); err != nil {return} else {go addClients(num)}
 		case "cut":
 			if num, err := readInt(c); err != nil {return} else {go cutClients(num)}
-		case "rat":
+		case "clo":
 			if num, err := readInt(c); err != nil {return} else {
 				if num > 100 { num = 100 } else if num < 0 { num = 0 }
-				environ.ratio = float64(num) / 100
+				environ.close = float64(num) / 100
+			}
+		case "dow":
+			if num, err := readInt(c); err != nil {return} else {
+				if num > 100 { num = 100 } else if num < 0 { num = 0 }
+				environ.down = float64(num) / 100
 			}
 		default: return
 		}
@@ -180,7 +187,7 @@ func runClient(u *client.Unity) {
 		select {
 		case num := <-ctx.work:
 			if num == 0 {return}
-			if num % 10 == 0 {
+			if float64(num%100)/100 <= environ.down {
 				if ent, err := u.Upload(); err == nil {
 					environ.entity <- ent
 					environ.idle <- ctx
