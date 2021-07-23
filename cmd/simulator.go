@@ -35,13 +35,13 @@ var environ struct{
 type Context struct {
 	work   chan int
 	entpsh chan *client.Entity
-	s      *client.Session
+	u      *client.Unity
 }
 
 func (c *Context) Close() error {
 	close(c.entpsh)
 	close(c.work)
-	if c.s != nil {return c.s.Close()}
+	if c.u != nil {return c.u.Close()}
 	return nil
 }
 
@@ -120,7 +120,7 @@ func readInt(c net.Conn) (int, error) {
 
 	num = strings.TrimSpace(num)
 	if v, err := strconv.Atoi(num); err != nil {
-		c.Write([]byte(fmt.Sprintf("wrong int value: %s", num)))
+		c.Write([]byte(fmt.Sprintf("wrong int value: %u", num)))
 		return 0, err
 	} else { return v, nil }
 }
@@ -129,7 +129,7 @@ func handle(c net.Conn) {
 	defer c.Close()
 	if secret, err := readString(c); err != nil {return} else {
 		if environ.secret != secret {
-			c.Write([]byte(fmt.Sprintf("secret not match: %s", secret)))
+			c.Write([]byte(fmt.Sprintf("secret not match: %u", secret)))
 			return
 		}
 	}
@@ -160,28 +160,28 @@ func handle(c net.Conn) {
 
 func addClients(num int) {
 	for i := 0; i < num; i++ {
-		s := &client.Session{Addr: environ.addr, Port: environ.port}
-		if err := s.Connect(); err != nil {
-			s.Close()
+		u := &client.Unity{Addr: environ.addr, Port: environ.port}
+		if err := u.Connect(); err != nil {
+			u.Close()
 			environ.closed <- struct{}{}
 			logger.Error("connect err", zap.Error(err))
 			continue
 		}
 
-		go runClient(s)
+		go runClient(u)
 	}
 }
 
-func runClient(s *client.Session) {
-	defer s.Close()
-	ctx := &Context{s:s, work: make(chan int), entpsh: make(chan *client.Entity)}
+func runClient(u *client.Unity) {
+	defer u.Close()
+	ctx := &Context{u: u, work: make(chan int), entpsh: make(chan *client.Entity)}
 	environ.idle <- ctx
 	for {
 		select {
 		case num := <-ctx.work:
 			if num == 0 {return}
 			if num % 10 == 0 {
-				if ent, err := s.Upload(); err == nil {
+				if ent, err := u.Upload(); err == nil {
 					environ.entity <- ent
 					environ.idle <- ctx
 				} else {
@@ -192,7 +192,7 @@ func runClient(s *client.Session) {
 			}
 		case ent := <-ctx.entpsh:
 			if ent == nil {return}
-			if err := s.Download(ent); err != nil {
+			if err := u.Download(ent); err != nil {
 				logger.Error("download err: %v",
 					zap.String("guid", hex.EncodeToString(ent.Guid)),
 					zap.String("hash", hex.EncodeToString(ent.Hash)), zap.Error(err))
