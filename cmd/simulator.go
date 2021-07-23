@@ -56,9 +56,6 @@ func main() {
 	flag.StringVar(&environ.addr, "addr", "127.0.0.1", "server address")
 	flag.IntVar(&environ.port, "port", 9966, "server port")
 	flag.IntVar(&environ.cmdPort, "cmd-port", 19966, "local command server port")
-	if environ.close > 1.0 { environ.close = 1.0 }
-	if environ.close < 0.0 { environ.close = 0.0 }
-
 	flag.Parse()
 
 	if v, err := zap.NewDevelopment(); err != nil {panic(err)} else {logger = v}
@@ -187,7 +184,7 @@ func runClient(u *client.Unity) {
 		select {
 		case num := <-ctx.work:
 			if num == 0 {return}
-			if float64(num%100)/100 <= environ.down {
+			if float64(num%100)/100 > environ.down {
 				if ent, err := u.Upload(); err == nil {
 					environ.entity <- ent
 					environ.idle <- ctx
