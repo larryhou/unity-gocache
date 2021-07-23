@@ -78,7 +78,7 @@ func main() {
 				environ.library = append(environ.library, ent)
 			case ctx := <-environ.idle:
 				rand.Seed(time.Now().UnixNano())
-				num := rand.Int()
+				num := rand.Int() + 1
 				logger.Debug("IDLE", zap.Uintptr("ctx", ctx.Uintptr()), zap.Int("num", num))
 				if environ.cutouts > 0 {
 					logger.Debug("cut", zap.Uintptr("ctx", ctx.Uintptr()), zap.Int("num", num))
