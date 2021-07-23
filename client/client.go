@@ -30,7 +30,7 @@ func (u *Unity) Close() error {
 }
 
 func (u *Unity) Connect() error {
-	c, err := net.Dial("tcp", fmt.Sprintf("%u:%d", u.Addr, u.Port))
+	c, err := net.Dial("tcp", fmt.Sprintf("%s:%d", u.Addr, u.Port))
 	if err != nil {return err}
 	u.c = c
 	if _, err := c.Write([]byte{'7', 'f'}); err != nil {return err}
@@ -54,7 +54,7 @@ func (u *Unity) Get(id []byte, t server.RequestType, w io.Writer) error {
 		_, err := u.c.Read(u.b[:32])
 		return err
 	}
-	if cmd[0] != '+' || cmd[1] != byte(t) {return fmt.Errorf("rsp cmd not match: %u", string(cmd))}
+	if cmd[0] != '+' || cmd[1] != byte(t) {return fmt.Errorf("rsp cmd not match: %s", string(cmd))}
 	sb := u.b[:16]
 	if _, err := u.c.Read(sb); err != nil {return err}
 	if _, err := u.c.Read(u.b[:32]); err != nil {return err}

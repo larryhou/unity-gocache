@@ -122,7 +122,7 @@ func readInt(c net.Conn) (int, error) {
 
 	num = strings.TrimSpace(num)
 	if v, err := strconv.Atoi(num); err != nil {
-		c.Write([]byte(fmt.Sprintf("wrong int value: %u", num)))
+		c.Write([]byte(fmt.Sprintf("wrong int value: %s", num)))
 		return 0, err
 	} else { return v, nil }
 }
@@ -131,7 +131,7 @@ func handle(c net.Conn) {
 	defer c.Close()
 	if secret, err := readString(c); err != nil {return} else {
 		if environ.secret != secret {
-			c.Write([]byte(fmt.Sprintf("secret not match: %u", secret)))
+			c.Write([]byte(fmt.Sprintf("secret not match: %s", secret)))
 			return
 		}
 	}
