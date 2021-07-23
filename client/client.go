@@ -12,7 +12,6 @@ import (
 	rand2 "math/rand"
 	"net"
 	"os"
-	"path"
 	"time"
 )
 
@@ -120,11 +119,12 @@ func (u *Unity) ETrx() error {
 }
 
 func (u *Unity) Write(b []byte, size int64, w io.Writer) error {
+	buf := make([]byte, 1024)
 	sent := int64(0)
 	for sent < size {
-		num := int64(len(b))
+		num := int64(len(buf))
 		if size - sent < num { num = size - sent }
-		b := b[:num]
+		b := buf[:num]
 		rand.Read(b)
 		sent += num
 		for len(b) > 0 {
@@ -158,15 +158,11 @@ func (u *Unity) Upload() (*Entity, error) {
 		size := size
 		r, w, err := os.Pipe()
 		if err != nil {return nil, err }
-		file, err := os.OpenFile(path.Join("/Users/larryhou/Downloads/temp", hex.EncodeToString(ent.Guid)), os.O_CREATE|os.O_WRONLY, 0700)
-
 		go func() {
 			defer w.Close()
-			defer file.Close()
 			h := sha256.New()
 			var c Counter
-
-			f := io.MultiWriter(w, h, &c, file)
+			f := io.MultiWriter(w, h, &c)
 			if err := u.Write(b, size, f); err != nil { panic(err) }
 			if int64(c) != size {panic(c)}
 			ent.Asha = h.Sum(nil)
