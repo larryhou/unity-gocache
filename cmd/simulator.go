@@ -144,7 +144,7 @@ func handle(c net.Conn) {
 
 	for {
 		cmd := string(buf[:3])
-		logger.Info("request", zap.String("cmd", cmd), zap.String("addr", c.RemoteAddr().String()))
+		logger.Info("command", zap.String("name", cmd), zap.String("addr", c.RemoteAddr().String()))
 		switch cmd {
 		case "add":
 			if num, err := readInt(c); err != nil {return} else {go addClients(num)}
