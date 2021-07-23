@@ -7,6 +7,7 @@ import (
     "fmt"
     "go.uber.org/zap"
     "io"
+    "math/rand"
     "net"
     "os"
     "path"
@@ -52,11 +53,14 @@ type Context struct {
 type CacheServer struct {
     Port int
     Path string
+    temp string
 }
 
 func (s *CacheServer) Listen() error {
     listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.Port))
     if err != nil {return err}
+
+    s.temp = path.Join(s.Path, "temp")
 
     for {
         c, err := listener.Accept()
@@ -206,7 +210,10 @@ func (s *CacheServer) Handle(c net.Conn) {
             dir := path.Join(s.Path, trx.guid[:2])
             if _, err := os.Stat(dir); err != nil || os.IsNotExist(err) { os.MkdirAll(dir, 0700) }
             filename := path.Join(dir, trx.guid + "-" + trx.hash + "." + t.extension())
-            file, err := os.OpenFile(filename, os.O_CREATE | os.O_WRONLY, 0700)
+            name := buf[:32]
+            rand.Read(name)
+            if _, err := os.Stat(s.temp); err != nil || os.IsNotExist(err) { os.MkdirAll(s.temp, 0700) }
+            file, err := os.OpenFile(path.Join(s.temp, hex.EncodeToString(name)), os.O_CREATE | os.O_WRONLY, 0700)
             if err != nil {logger.Error("put create file err", zap.String("file", filename), zap.Error(err));return}
             read, write := int64(0), int64(0)
             for read < size {
@@ -216,17 +223,21 @@ func (s *CacheServer) Handle(c net.Conn) {
                 if n, err := c.Read(b); err != nil {
                     file.Close()
                     logger.Error("put read body err", zap.Int64("read", read), zap.Int64("size", size), zap.Error(err))
-                    os.Remove(filename)
+                    os.Remove(file.Name())
                     return
                 } else { read += int64(n) }
                 if n, err := file.Write(b); err != nil {
                     file.Close()
                     logger.Error("put write cache err", zap.Int64("write", write), zap.Int64("size", size), zap.Error(err))
-                    os.Remove(filename)
+                    os.Remove(file.Name())
                     return
                 } else { write += int64(n) }
             }
             file.Close()
+            if err := os.Rename(file.Name(), filename); err != nil {
+                if write == size { logger.Debug("put failure", zap.String("cmd", cmd), zap.Int64("write", write), zap.String("file", filename), zap.Error(err))}
+                return
+            }
             if write == size { logger.Debug("put success", zap.String("cmd", cmd), zap.Int64("write", write), zap.String("file", filename))}
             usize += read
 
