@@ -68,8 +68,8 @@ func (u *Unity) Get(id []byte, t server.RequestType, w io.Writer) error {
 		b := u.b[:num]
 		if n, err := u.c.Read(b); err != nil {return err} else {
 			read += int64(n)
-			if n <= 0 {continue} else {
-				if _, err := w.Write(b[:n]); err != nil {return err}
+			for b := b[:n]; len(b) > 0; {
+				if m, err := w.Write(b); err != nil {return err} else { b = b[m:] }
 			}
 		}
 	}
@@ -92,8 +92,10 @@ func (u *Unity) Put(t server.RequestType, size int64, r io.Reader) error {
 		if size - sent < num { num = size - sent }
 		b := u.b[:num]
 		if n, err := r.Read(b); err != nil {return err} else {
-			if n > 0 {if _, err := u.c.Write(b[:n]); err != nil {return err}}
 			sent += int64(n)
+			for b := b[:n]; len(b) > 0; {
+				if m, err := u.c.Write(b); err != nil {return err} else {b = b[m:]}
+			}
 		}
 	}
 	return nil
@@ -116,15 +118,18 @@ func (u *Unity) ETrx() error {
 	return err
 }
 
-func (u *Unity) Write(b []byte, size int64, w io.Writer) error {
+func (u *Unity) Pump(size int64, w io.Writer) error {
+	buf := make([]byte, 1280)
 	sent := int64(0)
 	for sent < size {
-		num := int64(len(b))
+		num := int64(len(buf))
 		if size - sent < num { num = size - sent }
-		b := b[:num]
+		b := buf[:num]
 		rand.Read(b)
-		if _, err := w.Write(b); err != nil {return err}
 		sent += num
+		for len(b) > 0 {
+			if n, err := w.Write(b); err != nil {return err} else {b = b[n:]}
+		}
 	}
 	return nil
 }
@@ -148,7 +153,6 @@ func (u *Unity) Upload() (*Entity, error) {
 	rand2.Seed(time.Now().UnixNano())
 	size := (16<<10) + int64(rand2.Intn(2<<20))
 	ent.Size = size
-	b := make([]byte, 1024)
 	{
 		r, w, err := os.Pipe()
 		if err != nil {return nil, err }
@@ -156,21 +160,22 @@ func (u *Unity) Upload() (*Entity, error) {
 			defer w.Close()
 			h := sha256.New()
 			f := io.MultiWriter(w, h)
-			u.Write(b, size, f)
+			if err := u.Pump(size, f); err != nil {return}
 			ent.Asha = h.Sum(nil)
 		}()
 
 		u.Put(server.RequestTypeBin, size, r)
+
 	}
 	if rand2.Int() % 3 > 0 {
 		r, w, err := os.Pipe()
-		if err != nil {return nil, err }
+		if err != nil {return nil, err}
 		size := size / 10
 		go func() {
 			defer w.Close()
 			h := sha256.New()
 			f := io.MultiWriter(w, h)
-			u.Write(b, size, f)
+			if err := u.Pump(size, f); err != nil {return}
 			ent.Isha = h.Sum(nil)
 		}()
 
@@ -201,11 +206,13 @@ func (u *Unity) Download(ent *Entity) error {
 		if !bytes.Equal(s, ent.Asha[:32]) {panic(fmt.Errorf("asha not match: %s != %s %s %d", hex.EncodeToString(s), hex.EncodeToString(ent.Asha), hex.EncodeToString(ent.Guid), c))}
 	}
 	if len(ent.Isha) > 0 {
+		var c Counter
 		h := sha256.New()
-		if err := u.Get(id, server.RequestTypeInf, h); err != nil {return err}
+		w := io.MultiWriter(&c, h)
+		if err := u.Get(id, server.RequestTypeInf, w); err != nil {return err}
+		if c == 0 {return nil}
 		s := h.Sum(nil)
 		if !bytes.Equal(s, ent.Isha[:32]) {panic(fmt.Errorf("isha not match: %s != %s %s", hex.EncodeToString(s), hex.EncodeToString(ent.Isha), hex.EncodeToString(ent.Guid)))}
 	}
-
 	return nil
 }

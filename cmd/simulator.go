@@ -53,11 +53,8 @@ func (c *Context) Kill() {
 func (c *Context) Close() error {
 	if c.u != nil {
 		u := c.u
-		go func() {
-			time.Sleep(time.Second) /* make sure server has received all data */
-			c.Kill()
-			u.Close()
-		}()
+		c.Kill()
+		u.Close()
 		c.u = nil
 	}
 	return nil
@@ -241,7 +238,6 @@ func runClient(u *client.Unity) {
 						environ.entity <- ent
 						logger.Debug("push entity", zap.Uintptr("ctx", ctx.Uintptr()))
 					}()
-
 				} else {
 					logger.Error("upload err: %v", zap.Error(err))
 				}
