@@ -65,7 +65,7 @@ func (u *Unity) Get(id []byte, t server.RequestType, w io.Writer) error {
 		num := int64(len(u.b))
 		if size - read < num { num = size - read }
 		b := u.b[:num]
-		if n, err := u.c.Read(b); err != nil {return err} else {
+		if n, err := u.c.Read(b); err != nil {return fmt.Errorf("read %d != %d err: %v", read, size, err)} else {
 			read += int64(n)
 			for b := b[:n]; len(b) > 0; {
 				if m, err := w.Write(b); err != nil {return err} else { b = b[m:] }

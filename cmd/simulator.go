@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"math/rand"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -59,7 +60,7 @@ func main() {
 	flag.IntVar(&environ.count, "count", 10, "initial client count")
 	flag.Float64Var(&environ.close, "close", 0.15, "close ratio[0,1] after upload/download")
 	flag.StringVar(&environ.secret, "secret", "larryhou", "command secret")
-	flag.Float64Var(&environ.down, "down", 0.90, "download operation ratio[0,1]")
+	flag.Float64Var(&environ.down, "down", 0.95, "download operation ratio[0,1]")
 	flag.StringVar(&environ.addr, "addr", "127.0.0.1", "server address")
 	flag.IntVar(&environ.port, "port", 9966, "server port")
 	flag.IntVar(&environ.cmdPort, "cmd-port", 19966, "local command server port")
@@ -117,7 +118,7 @@ func main() {
 			}
 		}
 	}()
-
+	go http.ListenAndServe(":9999", nil)
 	addClients(environ.count)
 	server, err := net.Listen("tcp", fmt.Sprintf(":%d", environ.cmdPort))
 	if err != nil { panic(err) }
