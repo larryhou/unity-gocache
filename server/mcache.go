@@ -2,8 +2,6 @@ package server
 
 import (
     "bytes"
-    "crypto/sha256"
-    "encoding/hex"
     "errors"
     "go.uber.org/zap"
     "io"
@@ -71,7 +69,6 @@ type memEntity struct {
     uuid string
     size int64
     hit  int
-    sha  string
     ts   int64
 }
 
@@ -100,11 +97,9 @@ func (m *memCache) remove(uuid string) {
 func (m *memCache) put(uuid string, data *bytes.Buffer) {
     m.Lock()
     defer m.Unlock()
-    h := sha256.Sum256(data.Bytes())
-    s := hex.EncodeToString(h[:])
-    logger.Debug("mcache", zap.String("put", uuid), zap.String("sha", s), zap.Int("size", data.Len()), zap.Uintptr("ptr", uintptr(unsafe.Pointer(data))))
+    logger.Debug("mcache", zap.String("put", uuid), zap.Int("size", data.Len()), zap.Uintptr("ptr", uintptr(unsafe.Pointer(data))))
     m.remove(uuid) /* clean up old one */
-    entity := &memEntity{uuid: uuid, data: data, size: int64(data.Len()), ts: time.Now().UnixNano(), sha: s}
+    entity := &memEntity{uuid: uuid, data: data, size: int64(data.Len()), ts: time.Now().UnixNano()}
     m.lookups[uuid] = entity
     m.library = append(m.library, entity)
     m.size += int64(data.Cap())
@@ -133,14 +128,7 @@ func (m *memCache) get(uuid string) (*bytes.Buffer, error) {
     defer m.RUnlock()
     if entity, ok := m.lookups[uuid]; ok {
         entity.hit++
-        h := sha256.Sum256(entity.data.Bytes())
-        s := hex.EncodeToString(h[:])
-        if s != entity.sha {
-            if f, err := os.OpenFile(uuid, os.O_CREATE|os.O_WRONLY, 0x700); err == nil {
-                f.Write(entity.data.Bytes())
-            }
-        }
-        logger.Debug("mcache", zap.String("get", uuid), zap.String("sha", s),
+        logger.Debug("mcache", zap.String("get", uuid),
             zap.Uintptr("ptr", uintptr(unsafe.Pointer(entity.data))),
             zap.Int("size", entity.data.Len()),
             zap.Int("data", int(entity.size)),
