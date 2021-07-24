@@ -11,7 +11,6 @@ import (
 	"io"
 	rand2 "math/rand"
 	"net"
-	"os"
 	"time"
 )
 
@@ -154,8 +153,7 @@ func (u *Unity) Upload() (*Entity, error) {
 	size := (16<<10) + int64(rand2.Intn(2<<20))
 	ent.Size = size
 	{
-		r, w, err := os.Pipe()
-		if err != nil {return nil, err }
+		r, w := io.Pipe()
 		go func() {
 			defer w.Close()
 			h := sha256.New()
@@ -168,8 +166,7 @@ func (u *Unity) Upload() (*Entity, error) {
 
 	}
 	if rand2.Int() % 3 > 0 {
-		r, w, err := os.Pipe()
-		if err != nil {return nil, err}
+		r, w := io.Pipe()
 		size := size / 10
 		go func() {
 			defer w.Close()
