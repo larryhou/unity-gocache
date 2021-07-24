@@ -168,7 +168,8 @@ type Pool struct {
 
 func (p *Pool) Put(v interface{}) {
     p.p++
-    p.Pool.Put(v)
+    //todo: memory leeks
+    //p.Pool.Put(v)
 }
 
 func (p *Pool) Get() interface{} {
