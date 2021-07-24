@@ -160,7 +160,7 @@ func (m *memCache) get(uuid string) (*bytes.Buffer, error) {
 }
 
 type Pool struct {
-    sync.Pool
+    *sync.Pool
     p int
     g int
     n int
@@ -189,7 +189,7 @@ var mcache struct {
 func init() {
     mcache.limit = 2 << 20 // 2M
     mcache.pool = &Pool{
-        Pool:sync.Pool{New: func() interface {} {
+        Pool: &sync.Pool{New: func() interface {} {
             mcache.pool.n++
             return new(bytes.Buffer)
         }},
