@@ -49,20 +49,21 @@ type CacheServer struct {
     Port     int
     Path     string
     LogLevel int
-    MemCap   uint
+    CacheCap int
     temp     string
 }
 
 func (s *CacheServer) Listen() error {
     listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.Port))
     if err != nil {return err}
-    mcache.core.capacity = int64(s.MemCap) << 20
+    mcache.core.capacity = s.CacheCap
     s.temp = path.Join(s.Path, "temp")
     {
         l, err := zap.NewDevelopment(zap.IncreaseLevel(zapcore.Level(s.LogLevel)))
         if err != nil { panic(err) }
         logger = l
     }
+    go mcache.core.stat()
     for {
         c, err := listener.Accept()
         if err != nil { continue }

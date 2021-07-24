@@ -73,7 +73,7 @@ type memEntity struct {
 }
 
 type memCache struct {
-    capacity int64
+    capacity int
     lookups  map[string]*memEntity
     library  []*memEntity
     size     int64
@@ -104,7 +104,7 @@ func (m *memCache) put(uuid string, data *bytes.Buffer) {
     m.lookups[uuid] = entity
     m.library = append(m.library, entity)
     m.size += int64(data.Cap())
-    if m.capacity < m.size {
+    if m.capacity < len(m.library) {
         sort.Slice(m.library, func(i, j int) bool {
             ei := m.library[i]
             ej := m.library[j]
@@ -113,15 +113,34 @@ func (m *memCache) put(uuid string, data *bytes.Buffer) {
         })
         for i := 0; i < len(m.library); i++ {
             entity := m.library[i]
-            size := int64(entity.data.Cap())
-            if m.size - size > m.capacity {
+            if m.capacity < len(m.library) {
                 mcache.pool.Put(entity.data) /* recycle */
+                logger.Debug("mcache cls", zap.Int("cap", m.capacity), zap.Int("len", len(m.library)))
                 delete(m.lookups, entity.uuid)
                 m.library = append(m.library[:i], m.library[i+1:]...)
-                m.size -= size
+                m.size -= int64(entity.data.Cap())
                 i--
             } else { break }
         }
+    }
+}
+
+func (m *memCache) stat() {
+    for {
+        m.RLock()
+        var size int64
+        for i := 0; i < len(m.library); i++ {
+            entity := m.library[i]
+            size += int64(entity.data.Cap())
+        }
+        m.RUnlock()
+        logger.Info("mcache", zap.Int("library", len(m.library)),
+            zap.Int("lookups", len(m.lookups)),
+            zap.Int64("size", size),
+            zap.Int("pget", mcache.pool.g),
+            zap.Int("pput", mcache.pool.p),
+            zap.Int("pnew", mcache.pool.n))
+        time.Sleep(5 * time.Second)
     }
 }
 
@@ -140,9 +159,26 @@ func (m *memCache) get(uuid string) (*bytes.Buffer, error) {
     return nil, mcache.errors.unavailable
 }
 
+type Pool struct {
+    sync.Pool
+    p int
+    g int
+    n int
+}
+
+func (p *Pool) Put(v interface{}) {
+    p.p++
+    p.Pool.Put(v)
+}
+
+func (p *Pool) Get() interface{} {
+    p.g++
+    return p.Pool.Get()
+}
+
 var mcache struct {
     core   memCache
-    pool   *sync.Pool
+    pool   *Pool
     limit  int64
     errors struct {
         unavailable error
@@ -152,8 +188,11 @@ var mcache struct {
 
 func init() {
     mcache.limit = 2 << 20 // 2M
-    mcache.pool = &sync.Pool{
-        New: func() interface {} { return new(bytes.Buffer) },
+    mcache.pool = &Pool{
+        Pool:sync.Pool{New: func() interface {} {
+            mcache.pool.n++
+            return new(bytes.Buffer)
+        }},
     }
     mcache.errors.unavailable = errors.New("not available for caching")
     mcache.errors.cacherr = errors.New("cache error")
@@ -169,7 +208,11 @@ func Open(name string, uuid string) (*File, error) {
     file, err := os.Open(name)
     if err != nil {return nil, err}
     f := &File{f: file, name: name, uuid: uuid}
-    if s, err := file.Stat(); err == nil && s.Size() < mcache.limit { f.m = mcache.pool.Get().(*bytes.Buffer) }
+    if mcache.core.capacity > 0 {
+        if s, err := file.Stat(); err == nil && s.Size() < mcache.limit {
+            f.m = mcache.pool.Get().(*bytes.Buffer)
+        }
+    }
     return f, nil
 }
 
@@ -177,6 +220,8 @@ func NewFile(name string, uuid string, size int64) (*File, error) {
     file, err := os.OpenFile(name, os.O_CREATE | os.O_WRONLY, 0700)
     if err != nil {return nil, err}
     f := &File{f: file, name: name, uuid: uuid}
-    if mcache.core.capacity > 0 && size < mcache.limit { f.m = mcache.pool.Get().(*bytes.Buffer) }
+    if mcache.core.capacity > 0 && size < mcache.limit {
+        f.m = mcache.pool.Get().(*bytes.Buffer)
+    }
     return f, nil
 }
