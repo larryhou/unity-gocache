@@ -200,7 +200,7 @@ func (u *Unity) Download(ent *Entity) error {
 		if c == 0 { return nil }
 		if int64(c) != ent.Size {return fmt.Errorf("size not match: %d != %d", c, ent.Size)}
 		s := h.Sum(nil)
-		if !bytes.Equal(s, ent.Asha[:32]) {panic(fmt.Errorf("asha not match: %s != %s %s %d", hex.EncodeToString(s), hex.EncodeToString(ent.Asha), hex.EncodeToString(ent.Guid), c))}
+		if len(ent.Asha) > 0 && !bytes.Equal(s, ent.Asha[:32]) {panic(fmt.Errorf("asha not match: %s != %s %s %d", hex.EncodeToString(s), hex.EncodeToString(ent.Asha), hex.EncodeToString(ent.Guid), c))}
 	}
 	if len(ent.Isha) > 0 {
 		var c Counter
@@ -209,7 +209,7 @@ func (u *Unity) Download(ent *Entity) error {
 		if err := u.Get(id, server.RequestTypeInf, w); err != nil {return err}
 		if c == 0 {return nil}
 		s := h.Sum(nil)
-		if !bytes.Equal(s, ent.Isha[:32]) {panic(fmt.Errorf("isha not match: %s != %s %s", hex.EncodeToString(s), hex.EncodeToString(ent.Isha), hex.EncodeToString(ent.Guid)))}
+		if len(ent.Isha) > 0 && !bytes.Equal(s, ent.Isha[:32]) {panic(fmt.Errorf("isha not match: %s != %s %s", hex.EncodeToString(s), hex.EncodeToString(ent.Isha), hex.EncodeToString(ent.Guid)))}
 	}
 	return nil
 }
