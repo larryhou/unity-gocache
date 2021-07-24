@@ -80,6 +80,7 @@ type memCache struct {
     lookups  map[string]*memEntity
     library  []*memEntity
     size     int64
+    sync.RWMutex
 }
 
 func (m *memCache) remove(uuid string) {
@@ -97,6 +98,8 @@ func (m *memCache) remove(uuid string) {
 }
 
 func (m *memCache) put(uuid string, data *bytes.Buffer) {
+    m.Lock()
+    defer m.Unlock()
     h := sha256.Sum256(data.Bytes())
     s := hex.EncodeToString(h[:])
     logger.Debug("mcache", zap.String("put", uuid), zap.String("sha", s), zap.Int("size", data.Len()), zap.Uintptr("ptr", uintptr(unsafe.Pointer(data))))
@@ -126,6 +129,8 @@ func (m *memCache) put(uuid string, data *bytes.Buffer) {
 }
 
 func (m *memCache) get(uuid string) (*bytes.Buffer, error) {
+    m.RLock()
+    defer m.RUnlock()
     if entity, ok := m.lookups[uuid]; ok {
         entity.hit++
         h := sha256.Sum256(entity.data.Bytes())
