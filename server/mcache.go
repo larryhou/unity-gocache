@@ -23,29 +23,6 @@ type File struct {
     r    io.Reader
 }
 
-//type Buffer struct {
-//    m bytes.Buffer
-//    r *bytes.Reader
-//    sealed bool
-//}
-//
-//func (b *Buffer) Write(p []byte) (int, error) {
-//    if b.sealed {panic("write into sealed buffer")}
-//    return b.m.Write(p)
-//}
-//
-//func (b *Buffer) Read(p []byte) (int, error) {
-//    if b.r == nil {
-//        b.r = bytes.NewReader(b.m.Bytes())
-//        b.r.Seek(0, io.SeekStart)
-//    }
-//    return b.r.Read(p)
-//}
-//
-//func (b *Buffer) Seek(offset int64, whence int) (int64, error) {
-//    return b.r.Seek(offset, whence)
-//}
-
 func (f *File) Read(p []byte) (int, error) {
     if f.r == nil { if f.m != nil {f.r = f.m} else {f.r = f.f} }
     return f.r.Read(p)
