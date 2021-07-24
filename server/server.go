@@ -49,20 +49,20 @@ type CacheServer struct {
     Port     int
     Path     string
     LogLevel int
+    MemCap   uint
     temp     string
 }
 
 func (s *CacheServer) Listen() error {
     listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.Port))
     if err != nil {return err}
-
+    mcache.core.capacity = int64(s.MemCap) << 20
     s.temp = path.Join(s.Path, "temp")
     {
         l, err := zap.NewDevelopment(zap.IncreaseLevel(zapcore.Level(s.LogLevel)))
         if err != nil { panic(err) }
         logger = l
     }
-
     for {
         c, err := listener.Accept()
         if err != nil { continue }
@@ -117,14 +117,18 @@ func (s *CacheServer) Send(c net.Conn, event chan *Context) {
 
             logger.Debug("get >>>", zap.String("cmd", cmd), zap.String("guid", ctx.guid), zap.Int64("size", fi.Size()))
 
-            file, err := os.Open(filename)
+            file, err := Open(filename, hex.EncodeToString(ctx.id[:]) + string(t))
             if err != nil {logger.Error("get read cache err", zap.String("file", filename), zap.Error(err));return }
             sent := int64(0)
             for size := fi.Size(); sent < size; {
                 num := int64(len(buf))
                 if size - sent < num { num = size - sent }
                 b := buf[:num]
-                if n, err := file.Read(b); err != nil {file.Close();return} else {
+                if n, err := file.Read(b); err != nil {
+                    file.Close()
+                    logger.Error("get read file err", zap.Int64("sent", sent), zap.Int64("size", size), zap.Error(err))
+                    return
+                } else {
                     sent += int64(n)
                     for b := b[:n]; len(b) > 0; {
                         if m, err := c.Write(b); err != nil {
@@ -210,7 +214,7 @@ func (s *CacheServer) Handle(c net.Conn) {
             name := buf[:32]
             rand.Read(name)
             if _, err := os.Stat(s.temp); err != nil || os.IsNotExist(err) { os.MkdirAll(s.temp, 0700) }
-            file, err := os.OpenFile(path.Join(s.temp, hex.EncodeToString(name)), os.O_CREATE | os.O_WRONLY, 0700)
+            file, err := NewFile(path.Join(s.temp, hex.EncodeToString(name)), trx.guid+trx.hash+string(t), size)
             if err != nil {logger.Error("put create file err", zap.String("file", filename), zap.Error(err));return}
             write := int64(0)
             for write < size {
