@@ -82,6 +82,7 @@ type memCache struct {
 
 func (m *memCache) remove(uuid string) {
     if entity, ok := m.lookups[uuid]; ok {
+        mcache.pool.Put(entity.data) /* recycle */
         delete(m.lookups, entity.uuid)
         m.size -= int64(entity.data.Cap())
         for i := 0; i < len(m.library); i++ {
@@ -114,6 +115,7 @@ func (m *memCache) put(uuid string, data *bytes.Buffer) {
             entity := m.library[i]
             size := int64(entity.data.Cap())
             if m.size - size > m.capacity {
+                mcache.pool.Put(entity.data) /* recycle */
                 delete(m.lookups, entity.uuid)
                 m.library = append(m.library[:i], m.library[i+1:]...)
                 m.size -= size
