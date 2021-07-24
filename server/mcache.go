@@ -24,7 +24,7 @@ type File struct {
 }
 
 func (f *File) Read(p []byte) (int, error) {
-    if f.r == nil { if f.m != nil {f.r = f.m} else {f.r = f.f} }
+    if f.r == nil { if f.f != nil {f.r = f.f} else {f.r = f.m} }
     return f.r.Read(p)
 }
 
@@ -40,7 +40,7 @@ func (f *File) Write(p []byte) (int, error) {
 
 func (f *File) Close() error {
     defer func() {
-        if err := f.tryCache(); err != nil && f.m != nil {
+        if err := f.tryCache(); err == mcache.errors.cacherr {
             f.m.Reset()
             mcache.pool.Put(f.m)
             logger.Debug("pool", zap.Uintptr("put", uintptr(unsafe.Pointer(f.m))))
@@ -57,8 +57,9 @@ func (f *File) tryCache() error {
             if s.Size() == int64(f.m.Len()) {
                 mcache.core.put(f.uuid, f.m)
                 return nil
-            } else {return mcache.errors.incomplete}
-        } else {return err}
+            }
+        }
+        return mcache.errors.cacherr
     }
     return mcache.errors.unavailable
 }
@@ -150,7 +151,7 @@ var mcache struct {
     limit  int64
     errors struct {
         unavailable error
-        incomplete  error
+        cacherr    error
     }
 }
 
@@ -160,7 +161,7 @@ func init() {
         New: func() interface {} { return new(bytes.Buffer) },
     }
     mcache.errors.unavailable = errors.New("not available for caching")
-    mcache.errors.incomplete = errors.New("incomplete")
+    mcache.errors.cacherr = errors.New("cache error")
     mcache.core.lookups = make(map[string]*memEntity)
 }
 

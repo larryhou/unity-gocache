@@ -124,7 +124,11 @@ func (s *CacheServer) Send(c net.Conn, event chan *Context) {
                 num := int64(len(buf))
                 if size - sent < num { num = size - sent }
                 b := buf[:num]
-                if n, err := file.Read(b); err != nil {file.Close();return} else {
+                if n, err := file.Read(b); err != nil {
+                    file.Close()
+                    logger.Error("get read file err", zap.Int64("sent", sent), zap.Int64("size", size), zap.Error(err))
+                    return
+                } else {
                     sent += int64(n)
                     for b := b[:n]; len(b) > 0; {
                         if m, err := c.Write(b); err != nil {
