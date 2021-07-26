@@ -84,7 +84,7 @@ func (s *CacheServer) Send(c net.Conn, event chan *Context) {
         } else { logger.Info("closed w", zap.String("addr", addr)) }
     }()
 
-    buf := make([]byte, 1280)
+    buf := make([]byte, 64<<10)
     hdr := bytes.NewBuffer(buf[:0])
     for ctx := range event {
         cmd := string(ctx.command[:])
@@ -164,7 +164,7 @@ func (s *CacheServer) Handle(c net.Conn) {
         } else { logger.Info("closed r", zap.String("addr", addr)) }
     }()
 
-    buf := make([]byte, 1024)
+    buf := make([]byte, 16<<10)
 
     ver := buf[:2]
     if _, err := c.Read(ver); err != nil { logger.Error("read version err", zap.Error(err));return }
