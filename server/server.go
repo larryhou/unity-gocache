@@ -63,7 +63,7 @@ func (s *CacheServer) Listen() error {
         if err != nil { panic(err) }
         logger = l
     }
-    go mcache.core.stat()
+    //go mcache.core.stat()
     for {
         c, err := listener.Accept()
         if err != nil { continue }

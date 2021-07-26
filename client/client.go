@@ -32,12 +32,12 @@ func (u *Unity) Connect() error {
 	c, err := net.Dial("tcp", fmt.Sprintf("%s:%d", u.Addr, u.Port))
 	if err != nil {return err}
 	u.c = c
-	if _, err := c.Write([]byte{'7', 'f'}); err != nil {return err}
+	if _, err := c.Write([]byte{'f', 'e'}); err != nil {return err}
 	ver := make([]byte, 8)
 	if _, err := c.Read(ver); err != nil {return err}
 	if _, err := hex.Decode(ver, ver); err != nil {return err}
 	v := binary.BigEndian.Uint32(ver)
-	if v != 0x0000007f { return fmt.Errorf("version not match: %08x", v) }
+	if v != 0x000000fe { return fmt.Errorf("version not match: %08x", v) }
 	return nil
 }
 
