@@ -8,6 +8,7 @@ import (
 	"github.com/larryhou/unity-gocache/client"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"math"
 	"math/rand"
 	"net"
 	"net/http"
@@ -60,7 +61,7 @@ func main() {
 	flag.IntVar(&environ.count, "count", 10, "initial client count")
 	flag.Float64Var(&environ.close, "close", 0.15, "close ratio[0,1] after upload/download")
 	flag.StringVar(&environ.secret, "secret", "larryhou", "command secret")
-	flag.Float64Var(&environ.down, "down", 0.95, "download operation ratio[0,1]")
+	flag.Float64Var(&environ.down, "down", 0.90, "download operation ratio[0,1]")
 	flag.StringVar(&environ.addr, "addr", "127.0.0.1", "server address")
 	flag.IntVar(&environ.port, "port", 9966, "server port")
 	flag.IntVar(&environ.cmdPort, "cmd-port", 19966, "local command server port")
@@ -103,9 +104,12 @@ func main() {
 				for {
 					if len(environ.library) > 0 {
 						rand.Seed(time.Now().UnixNano())
-						n := rand.Intn(len(environ.library))
+						p := rand.Float64()
+						span := len(environ.library)
+						if span > 1e+3 { span = 1e+3 }
+						n := math.Pow(p, 4) * float64(span)
 						go func() {
-							ctx.entpsh <- environ.library[n]
+							ctx.entpsh <- environ.library[len(environ.library) - int(n) - 1]
 							logger.Debug("send entity", zap.Uintptr("ctx", ctx.Uintptr()))
 						}()
 						break

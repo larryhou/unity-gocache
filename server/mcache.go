@@ -6,7 +6,6 @@ import (
     "go.uber.org/zap"
     "io"
     "os"
-    "sort"
     "sync"
     "time"
     "unsafe"
@@ -105,12 +104,6 @@ func (m *memCache) put(uuid string, data *bytes.Buffer) {
     m.library = append(m.library, entity)
     m.size += int64(data.Cap())
     if m.capacity < len(m.library) {
-        sort.Slice(m.library, func(i, j int) bool {
-            ei := m.library[i]
-            ej := m.library[j]
-            if ei.hit != ej.hit { return ei.hit < ej.hit }
-            return ei.ts < ej.ts
-        })
         for i := 0; i < len(m.library); i++ {
             entity := m.library[i]
             if m.capacity < len(m.library) {
