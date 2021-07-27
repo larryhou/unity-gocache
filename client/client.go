@@ -17,8 +17,9 @@ import (
 type Unity struct {
 	Addr string
 	Port int
-	c    net.Conn
-	b    [1024]byte
+	c    *server.Stream
+	b    [16<<10]byte
+	p    [32<<10]byte
 }
 
 func (u *Unity) Close() error {
@@ -31,10 +32,10 @@ func (u *Unity) Close() error {
 func (u *Unity) Connect() error {
 	c, err := net.Dial("tcp", fmt.Sprintf("%s:%d", u.Addr, u.Port))
 	if err != nil {return err}
-	u.c = c
-	if _, err := c.Write([]byte{'f', 'e'}); err != nil {return err}
+	u.c = &server.Stream{Rwp: c}
+	if err := u.c.Write([]byte{'f', 'e'}, 2); err != nil {return err}
 	ver := make([]byte, 8)
-	if _, err := c.Read(ver); err != nil {return err}
+	if err := u.c.Read(ver, len(ver)); err != nil {return err}
 	if _, err := hex.Decode(ver, ver); err != nil {return err}
 	v := binary.BigEndian.Uint32(ver)
 	if v != 0x000000fe { return fmt.Errorf("version not match: %08x", v) }
@@ -46,28 +47,27 @@ func (u *Unity) Get(id []byte, t server.RequestType, w io.Writer) error {
 	b.WriteByte('g')
 	b.WriteByte(byte(t))
 	b.Write(id[:32])
-	if _, err := u.c.Write(b.Bytes()); err != nil {return err}
+	if err := u.c.Write(b.Bytes(), b.Len()); err != nil {return err}
 	cmd := u.b[:2]
-	if _, err := u.c.Read(cmd); err != nil {return err}
+	if err := u.c.Read(cmd, len(cmd)); err != nil {return err}
 	if cmd[0] == '-' {
-		_, err := u.c.Read(u.b[:32])
-		return err
+		return u.c.Read(u.b[:], 32)
 	}
 	if cmd[0] != '+' || cmd[1] != byte(t) {return fmt.Errorf("get cmd not match: %s", string(cmd))}
 	sb := u.b[:16]
-	if _, err := u.c.Read(sb); err != nil {return err}
+	if err := u.c.Read(sb, len(sb)); err != nil {return err}
 	if _, err := hex.Decode(sb, sb); err != nil {return err}
 	size := int64(binary.BigEndian.Uint64(sb))
-	if _, err := u.c.Read(u.b[:32]); err != nil {return err}
+	if err := u.c.Read(u.b[:], 32); err != nil {return err}
 	if !bytes.Equal(u.b[:32], id) {return fmt.Errorf("cache id not match")}
 	read := int64(0)
 	for read < size {
 		num := int64(len(u.b))
 		if size - read < num { num = size - read }
 		b := u.b[:num]
-		if n, err := u.c.Read(b); err != nil {return fmt.Errorf("read:%c %d != %d err: %v", t, read, size, err)} else {
-			read += int64(n)
-			for b := b[:n]; len(b) > 0; {
+		if err := u.c.Read(b, int(num)); err != nil {return fmt.Errorf("read:%c %d != %d err: %v", t, read, size, err)} else {
+			read += num
+			for b := b; len(b) > 0; {
 				if m, err := w.Write(b); err != nil {return err} else { b = b[m:] }
 			}
 		}
@@ -84,7 +84,7 @@ func (u *Unity) Put(t server.RequestType, size int64, r io.Reader) error {
 	sh := u.b[len(u.b)-16:]
 	hex.Encode(sh, sb)
 	b.Write(sh)
-	if _, err := u.c.Write(b.Bytes()); err != nil {return err}
+	if err := u.c.Write(b.Bytes(), b.Len()); err != nil {return err}
 	sent := int64(0)
 	for sent < size {
 		num := int64(len(u.b))
@@ -92,33 +92,29 @@ func (u *Unity) Put(t server.RequestType, size int64, r io.Reader) error {
 		b := u.b[:num]
 		if n, err := r.Read(b); err != nil {return err} else {
 			sent += int64(n)
-			for b := b[:n]; len(b) > 0; {
-				if m, err := u.c.Write(b); err != nil {return err} else {b = b[m:]}
-			}
+			if err := u.c.Write(b, n); err != nil {return err}
 		}
 	}
 	return nil
 }
 
 func (u *Unity) STrx(id []byte) error {
-	b := bytes.NewBuffer(u.b[:0])
-	b.WriteByte('t')
-	b.WriteByte('s')
-	b.Write(id[:32])
-	_, err := u.c.Write(b.Bytes())
-	return err
+	b := u.b[:]
+	b[0] = 't'
+	b[1] = 's'
+	copy(b[2:], id[:32])
+	return u.c.Write(b, 34)
 }
 
 func (u *Unity) ETrx() error {
-	b := bytes.NewBuffer(u.b[:0])
-	b.WriteByte('t')
-	b.WriteByte('e')
-	_, err := u.c.Write(b.Bytes())
-	return err
+	b := u.b[:]
+	b[0] = 't'
+	b[1] = 'e'
+	return u.c.Write(b, 2)
 }
 
 func (u *Unity) Pump(size int64, w io.Writer) error {
-	buf := make([]byte, 1280)
+	buf := u.p[:]
 	sent := int64(0)
 	for sent < size {
 		num := int64(len(buf))
