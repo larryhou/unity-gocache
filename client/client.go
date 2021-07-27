@@ -19,7 +19,6 @@ type Unity struct {
 	Port int
 	c    *server.Stream
 	b    [16<<10]byte
-	p    [32<<10]byte
 }
 
 func (u *Unity) Close() error {
@@ -114,7 +113,7 @@ func (u *Unity) ETrx() error {
 }
 
 func (u *Unity) Pump(size int64, w io.Writer) error {
-	buf := u.p[:]
+	buf := make([]byte, 32<<10)
 	sent := int64(0)
 	for sent < size {
 		num := int64(len(buf))
