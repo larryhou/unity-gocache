@@ -49,6 +49,11 @@ type Stream struct {
     Rwp io.ReadWriter
 }
 
+func (s *Stream) Name() string {
+    if f, ok := s.Rwp.(*File); ok {return f.Name()}
+    return ""
+}
+
 func (s *Stream) ReadString(buf []byte) (string, error) {
     if err := s.Read(buf, 2); err != nil {return "", err}
     n := int(binary.BigEndian.Uint16(buf))
@@ -101,11 +106,16 @@ func (s *Stream) Close() error {
     return nil
 }
 
+type Air struct { s int64 }
+func (i Air) Read(p []byte) (int, error)  { return len(p), nil }
+func (i Air) Write(p []byte) (int, error) { return len(p), nil }
+
 type CacheServer struct {
     Port     int
     Path     string
     LogLevel int
     CacheCap int
+    DryRun   bool
     temp     string
 }
 
@@ -148,12 +158,19 @@ func (s *CacheServer) Send(c net.Conn, event chan *Context) {
         switch cmd[0] {
         case 'g':
             t := RequestType(cmd[1])
+
+            size := int64(0)
+            exists := true
             filename := path.Join(s.Path, ctx.guid[:2], ctx.guid + "-" + ctx.hash + "." + t.extension())
+            if s.DryRun { size = 2<<20 } else {
+                fi, err := os.Stat(filename)
+                exists = err == nil || os.IsExist(err)
+                if exists { size = fi.Size() }
+            }
             logger.Debug("get +++", zap.String("cmd", cmd), zap.String("guid", ctx.guid))
-            fi, err := os.Stat(filename)
+
             hdr.Reset()
-            exist := false
-            if err != nil && os.IsNotExist(err) {
+            if !exists {
                 hdr.WriteByte('-')
                 hdr.WriteByte(byte(t))
                 logger.Debug("mis ---", zap.String("cmd", cmd), zap.String("guid", ctx.guid))
@@ -161,25 +178,27 @@ func (s *CacheServer) Send(c net.Conn, event chan *Context) {
                 hdr.WriteByte('+')
                 hdr.WriteByte(byte(t))
                 sb := buf[len(buf)-8:]
-                binary.BigEndian.PutUint64(sb, uint64(fi.Size()))
+                binary.BigEndian.PutUint64(sb, uint64(size))
                 sh := buf[len(buf)-16:]
                 hex.Encode(sh, sb)
                 hdr.Write(sh)
-                exist = true
             }
 
             hdr.Write(ctx.id[:]) /* guid + hash */
             if err := conn.Write(hdr.Bytes(), hdr.Len()); err != nil { logger.Error("send get + err", zap.Error(err));return }
             dsize += int64(hdr.Len())
-            if !exist {continue}
+            if !exists {continue}
 
-            logger.Debug("get >>>", zap.String("cmd", cmd), zap.String("guid", ctx.guid), zap.Int64("size", fi.Size()))
+            logger.Debug("get >>>", zap.String("cmd", cmd), zap.String("guid", ctx.guid), zap.Int64("size", size))
+            var in *Stream
+            if s.DryRun { in = &Stream{Rwp: Air{}} } else {
+                file, err := Open(filename, hex.EncodeToString(ctx.id[:]) + string(t))
+                if err != nil {logger.Error("get read cache err", zap.String("file", filename), zap.Error(err));return }
+                in = &Stream{Rwp: file}
+            }
 
-            file, err := Open(filename, hex.EncodeToString(ctx.id[:]) + string(t))
-            if err != nil {logger.Error("get read cache err", zap.String("file", filename), zap.Error(err));return }
-            in := &Stream{Rwp: file}
             sent := int64(0)
-            for size := fi.Size(); sent < size; {
+            for sent < size {
                 num := int64(len(buf))
                 if size - sent < num { num = size - sent }
                 if err := in.Read(buf, int(num)); err != nil {
@@ -196,7 +215,7 @@ func (s *CacheServer) Send(c net.Conn, event chan *Context) {
                 }
             }
             in.Close()
-            if sent == fi.Size() { logger.Debug("get success", zap.String("cmd", cmd), zap.Int64("sent", sent), zap.String("file", filename)) }
+            if sent == size { logger.Debug("get success", zap.String("cmd", cmd), zap.Int64("sent", sent), zap.String("file", filename)) }
             dsize += sent
         }
     }
@@ -268,31 +287,39 @@ func (s *CacheServer) Handle(c net.Conn) {
             dir := path.Join(s.Path, trx.guid[:2])
             if _, err := os.Stat(dir); err != nil || os.IsNotExist(err) { os.MkdirAll(dir, 0700) }
             filename := path.Join(dir, trx.guid + "-" + trx.hash + "." + t.extension())
-            name := buf[:32]
-            rand.Read(name)
-            if _, err := os.Stat(s.temp); err != nil || os.IsNotExist(err) { os.MkdirAll(s.temp, 0700) }
-            file, err := NewFile(path.Join(s.temp, hex.EncodeToString(name)), trx.guid+trx.hash+string(t), size)
-            if err != nil {logger.Error("put create file err", zap.String("file", filename), zap.Error(err));return}
-            out := &Stream{Rwp: file}
+
+            var out *Stream
+            if s.DryRun { out = &Stream{Rwp: Air{}} } else {
+                name := buf[:32]
+                rand.Read(name)
+                if _, err := os.Stat(s.temp); err != nil || os.IsNotExist(err) { os.MkdirAll(s.temp, 0700) }
+                file, err := NewFile(path.Join(s.temp, hex.EncodeToString(name)), trx.guid+trx.hash+string(t), size)
+                if err != nil {logger.Error("put create file err", zap.String("file", filename), zap.Error(err));return}
+                out = &Stream{Rwp: file}
+            }
+
             write := int64(0)
             for write < size {
                 num := int64(len(buf))
                 if size - write < num { num = size - write }
-                if err := conn.Read(buf, int(num)); err != nil {out.Close();os.Remove(file.Name());return} else {
+                if err := conn.Read(buf, int(num)); err != nil {out.Close();os.Remove(out.Name());return} else {
                     write += num
                     if err := out.Write(buf, int(num)); err != nil {
                         out.Close()
-                        os.Remove(file.Name())
+                        os.Remove(out.Name())
                         logger.Error("put write cache err", zap.Int64("write", write), zap.Int64("size", size), zap.Error(err))
                         return
                     }
                 }
             }
             out.Close()
-            if err := os.Rename(file.Name(), filename); err != nil {
-                logger.Error("put failure", zap.String("cmd", cmd), zap.Int64("write", write), zap.String("file", filename), zap.Error(err))
-                return
+            if !s.DryRun {
+                if err := os.Rename(out.Name(), filename); err != nil {
+                    logger.Error("put failure", zap.String("cmd", cmd), zap.Int64("write", write), zap.String("file", filename), zap.Error(err))
+                    return
+                }
             }
+
             if write == size { logger.Debug("put success", zap.String("cmd", cmd), zap.Int64("write", write), zap.String("file", filename))}
             usize += write
 
