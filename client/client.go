@@ -12,13 +12,13 @@ import (
 	"io"
 	rand2 "math/rand"
 	"net"
-	"time"
 )
 
 type Unity struct {
 	Addr   string
 	Port   int
 	Verify bool
+	Rand   *rand2.Rand
 	c      *server.Stream
 	b      [32 << 10]byte
 }
@@ -146,8 +146,7 @@ func (u *Unity) Upload() (*Entity, error) {
 	ent.Hash = id[16:]
 	rand.Read(ent.Hash)
 	if err := u.STrx(id); err != nil {return nil, err}
-	rand2.Seed(time.Now().UnixNano())
-	size := (16<<10) + int64(rand2.Intn(2<<20))
+	size := (16<<10) + int64(u.Rand.Intn(2<<20))
 	ent.Size = size
 	{
 		r, w := io.Pipe()
