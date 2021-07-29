@@ -159,7 +159,6 @@ func (u *Unity) Upload() (*Entity, error) {
 		}()
 
 		u.Put(server.RequestTypeBin, size, r)
-
 	}
 	if rand2.Int() % 3 > 0 {
 		r, w := io.Pipe()
