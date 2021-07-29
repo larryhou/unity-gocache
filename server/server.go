@@ -159,14 +159,19 @@ func (s *CacheServer) Send(c net.Conn, event chan *Context) {
         case 'g':
             t := RequestType(cmd[1])
 
-            size := int64(0)
             exists := true
+            var in *Stream
+            size := int64(0)
             filename := path.Join(s.Path, ctx.guid[:2], ctx.guid + "-" + ctx.hash + "." + t.extension())
-            if s.DryRun { size = 2<<20 } else {
-                fi, err := os.Stat(filename)
-                exists = err == nil || os.IsExist(err)
-                if exists { size = fi.Size() }
+            if s.DryRun {
+                in = &Stream{Rwp: &Air{}}
+                size = 2<<20
+            } else {
+                file, err := Open(filename, ctx.guid+ctx.hash+string(t))
+                if err == nil { size = file.size } else { exists = false }
+                in = &Stream{Rwp: file}
             }
+
             logger.Debug("get +++", zap.String("cmd", cmd), zap.String("guid", ctx.guid))
 
             hdr.Reset()
@@ -190,11 +195,16 @@ func (s *CacheServer) Send(c net.Conn, event chan *Context) {
             if !exists {continue}
 
             logger.Debug("get >>>", zap.String("cmd", cmd), zap.String("guid", ctx.guid), zap.Int64("size", size))
-            var in *Stream
-            if s.DryRun { in = &Stream{Rwp: Air{}} } else {
-                file, err := Open(filename, hex.EncodeToString(ctx.id[:]) + string(t))
-                if err != nil {logger.Error("get read cache err", zap.String("file", filename), zap.Error(err));return }
-                in = &Stream{Rwp: file}
+
+            if file, ok := in.Rwp.(*File); ok && file.c {
+                m := file.m
+                if err := conn.Write(m.Bytes(), m.Len()); err != nil {
+                    logger.Error("get sent cache err", zap.Int64("size", size), zap.Error(err))
+                    return
+                }
+                dsize += int64(m.Len())
+                logger.Debug("get success", zap.String("cmd", cmd), zap.Int("sent", m.Len()), zap.String("file", filename), zap.Bool("cache", true))
+                continue
             }
 
             sent := int64(0)
@@ -215,7 +225,7 @@ func (s *CacheServer) Send(c net.Conn, event chan *Context) {
                 }
             }
             in.Close()
-            if sent == size { logger.Debug("get success", zap.String("cmd", cmd), zap.Int64("sent", sent), zap.String("file", filename)) }
+            logger.Debug("get success", zap.String("cmd", cmd), zap.Int64("sent", sent), zap.String("file", filename))
             dsize += sent
         }
     }

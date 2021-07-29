@@ -14,6 +14,8 @@ import (
 type File struct {
     uuid string
     name string
+    size int64
+    c    bool
     m    *bytes.Buffer
     f    *os.File
     w    io.Writer
@@ -147,7 +149,7 @@ func (m *memCache) get(uuid string) (*bytes.Buffer, error) {
             zap.Int("size", entity.data.Len()),
             zap.Int("data", int(entity.size)),
             zap.Int("cap", entity.data.Cap()))
-        return bytes.NewBuffer(entity.data.Bytes()), nil
+        return entity.data, nil
     }
     return nil, mcache.errors.unavailable
 }
@@ -196,7 +198,7 @@ func init() {
 func Open(name string, uuid string) (*File, error) {
     if mcache.core.capacity > 0 {
         if data, err := mcache.core.get(uuid); err == nil {
-            return &File{m: data, uuid: uuid}, nil
+            return &File{m: data, uuid: uuid, c: true, size: int64(data.Len())}, nil
         }
     }
     file, err := os.Open(name)
@@ -205,6 +207,7 @@ func Open(name string, uuid string) (*File, error) {
     if mcache.core.capacity > 0 {
         if s, err := file.Stat(); err == nil && s.Size() < mcache.limit {
             f.m = mcache.pool.Get().(*bytes.Buffer)
+            f.size = s.Size()
         }
     }
     return f, nil
@@ -216,6 +219,7 @@ func NewFile(name string, uuid string, size int64) (*File, error) {
     f := &File{f: file, name: name, uuid: uuid}
     if mcache.core.capacity > 0 && size < mcache.limit {
         f.m = mcache.pool.Get().(*bytes.Buffer)
+        f.size = size
     }
     return f, nil
 }
