@@ -106,7 +106,7 @@ func (s *Stream) Close() error {
     return nil
 }
 
-type Air struct { s int64 }
+type Air struct { }
 func (i Air) Read(p []byte) (int, error)  { return len(p), nil }
 func (i Air) Write(p []byte) (int, error) { return len(p), nil }
 
