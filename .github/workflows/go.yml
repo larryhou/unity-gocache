@@ -22,10 +22,10 @@ jobs:
       run: go build -v ./gocache.go
 
     - name: BuildClient
-      run: go build -v ./cmd/client.go
+      run: go build -v -o cmd-client ./cmd/client.go
 
     - name: BuildSimulator
-      run: go build -v ./cmd/simulator.go
+      run: go build -v -o cmd-simulator ./cmd/simulator.go
 
     - name: Test
       run: go test -v ./...
