@@ -19,7 +19,13 @@ jobs:
         go-version: 1.16
 
     - name: Build
-      run: go build -v ./...
+      run: go build -v ./gocache.go
+
+    - name: BuildClient
+      run: go build -v ./cmd/client.go
+
+    - name: BuildSimulator
+      run: go build -v ./cmd/simulator.go
 
     - name: Test
       run: go test -v ./...
