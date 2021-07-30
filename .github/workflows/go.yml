@@ -33,10 +33,17 @@ jobs:
 
     - uses: actions/upload-artifact@v2
       with:
-        name: binaries
-        path: |
-          build/linux/
-          build/macos/
-          build/windows/
+        name: binaries-linux-arm64.zip
+        path: build/linux/
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: binaries-macos-amd64.zip
+        path: build/macos/
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: binaries-windows-amd64.zip
+        path: build/windows/
 
     - run: go test -v .
