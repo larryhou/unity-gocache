@@ -69,23 +69,25 @@ func crawl(context *CrawlContext, group *sync.WaitGroup) {
     for {
         var uuid []byte
         context.Lock()
+        index := 0
         if context.index >= len(context.entities) {return}
-        uuid = context.entities[context.index]
+        index = context.index
         context.index++
         context.Unlock()
+        uuid = context.entities[index]
 
         name := hex.EncodeToString(uuid[:16]) + "-" + hex.EncodeToString(uuid[16:])
         dir := path.Join(context.output, name[:2])
         if _, err := os.Stat(dir); err != nil && os.IsNotExist(err) { os.MkdirAll(dir, 0700) }
         if file, err := os.OpenFile(path.Join(dir, name + ".bin"), os.O_CREATE | os.O_WRONLY, 0700); err != nil {panic(err)} else {
             if err := c.Get(uuid, server.RequestTypeBin, file); err != nil {panic(err)}
-            log.Println(file.Name())
+            log.Printf("%6d %s", index, file.Name())
             file.Close()
         }
 
         if file, err := os.OpenFile(path.Join(dir, name + ".info"), os.O_CREATE | os.O_WRONLY, 0700); err != nil {panic(err)} else {
             if err := c.Get(uuid, server.RequestTypeInf, file); err != nil {panic(err)}
-            log.Println(file.Name())
+            log.Printf("%6d %s", index, file.Name())
             file.Close()
         }
     }
