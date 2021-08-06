@@ -3,6 +3,7 @@ package main
 import (
     "encoding/hex"
     "flag"
+    "fmt"
     "github.com/larryhou/unity-gocache/client"
     "github.com/larryhou/unity-gocache/server"
     "log"
@@ -28,9 +29,14 @@ func main() {
     flag.StringVar(&context.addr, "addr", "127.0.0.1", "server address")
     flag.IntVar(&context.port, "port", 9966, "server port")
     flag.StringVar(&source, "source", "", "guidhash source file")
-    flag.StringVar(&context.output, "output", "cache", "download output path")
+    flag.StringVar(&context.output, "output", "", "download output path")
+    flag.IntVar(&context.index, "index", 0, "download index")
     flag.IntVar(&parallel, "parallel", 4, "parallel downloads")
     flag.Parse()
+
+    if len(context.output) == 0 {
+        context.output = fmt.Sprintf("%s_%d", context.addr, context.port)
+    }
 
     var entities [][]byte
     if file, err := os.Open(source); err == nil {
