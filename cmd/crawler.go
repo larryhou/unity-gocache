@@ -73,10 +73,10 @@ func crawl(context *CrawlContext, group *sync.WaitGroup) {
     }()
 
     for {
+        if context.index >= len(context.entities) {return}
         var uuid []byte
         context.Lock()
         index := 0
-        if context.index >= len(context.entities) {return}
         index = context.index
         context.index++
         context.Unlock()
