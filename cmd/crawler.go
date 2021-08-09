@@ -91,17 +91,15 @@ func crawl(context *CrawlContext, group *sync.WaitGroup) {
         size := client.Counter(0)
         if file, err := os.OpenFile(filename, os.O_CREATE | os.O_WRONLY, 0700); err != nil {panic(err)} else {
             if err := c.Get(uuid, server.RequestTypeBin, io.MultiWriter(file, &size)); err != nil {panic(err)}
-            log.Printf("%6d %s %d", index, file.Name(), size)
             file.Close()
-            if size == 0 { os.Remove(file.Name()) }
+            if size == 0 { os.Remove(file.Name()) } else {log.Printf("%6d %s %d", index, file.Name(), size)}
         }
 
         size = 0
         if file, err := os.OpenFile(path.Join(dir, name + ".info"), os.O_CREATE | os.O_WRONLY, 0700); err != nil {panic(err)} else {
             if err := c.Get(uuid, server.RequestTypeInf, io.MultiWriter(file, &size)); err != nil {panic(err)}
-            log.Printf("%6d %s %d", index, file.Name(), size)
             file.Close()
-            if size == 0 { os.Remove(file.Name()) }
+            if size == 0 { os.Remove(file.Name()) } else {log.Printf("%6d %s %d", index, file.Name(), size)}
         }
     }
 }
