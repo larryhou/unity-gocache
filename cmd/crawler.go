@@ -6,6 +6,7 @@ import (
     "fmt"
     "github.com/larryhou/unity-gocache/client"
     "github.com/larryhou/unity-gocache/server"
+    "io"
     "log"
     "os"
     "path"
@@ -87,16 +88,20 @@ func crawl(context *CrawlContext, group *sync.WaitGroup) {
         if _, err := os.Stat(dir); err != nil && os.IsNotExist(err) { os.MkdirAll(dir, 0700) }
         filename := path.Join(dir, name + ".bin")
         if _, err := os.Stat(filename); err == nil || os.IsExist(err) {continue}
+        size := client.Counter(0)
         if file, err := os.OpenFile(filename, os.O_CREATE | os.O_WRONLY, 0700); err != nil {panic(err)} else {
-            if err := c.Get(uuid, server.RequestTypeBin, file); err != nil {panic(err)}
-            log.Printf("%6d %s", index, file.Name())
+            if err := c.Get(uuid, server.RequestTypeBin, io.MultiWriter(file, &size)); err != nil {panic(err)}
+            log.Printf("%6d %s %d", index, file.Name(), size)
             file.Close()
+            if size == 0 { os.Remove(file.Name()) }
         }
 
+        size = 0
         if file, err := os.OpenFile(path.Join(dir, name + ".info"), os.O_CREATE | os.O_WRONLY, 0700); err != nil {panic(err)} else {
-            if err := c.Get(uuid, server.RequestTypeInf, file); err != nil {panic(err)}
-            log.Printf("%6d %s", index, file.Name())
+            if err := c.Get(uuid, server.RequestTypeInf, io.MultiWriter(file, &size)); err != nil {panic(err)}
+            log.Printf("%6d %s %d", index, file.Name(), size)
             file.Close()
+            if size == 0 { os.Remove(file.Name()) }
         }
     }
 }
