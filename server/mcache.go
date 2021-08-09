@@ -179,7 +179,7 @@ func Open(name string, uuid string) (*File, error) {
         }
     } else {
         file.Close()
-        return nil, fmt.Errorf("stat err: %s", name)
+        return nil, fmt.Errorf("unavailable: %s", name)
     }
 
     return f, nil
