@@ -4,13 +4,18 @@ import (
     "encoding/hex"
     "flag"
     "fmt"
+    "github.com/google/gopacket"
+    "github.com/google/gopacket/layers"
+    "github.com/google/gopacket/pcap"
     "github.com/larryhou/unity-gocache/client"
     "github.com/larryhou/unity-gocache/server"
     "io"
     "log"
     "os"
     "path"
+    "strconv"
     "sync"
+    "time"
 )
 
 type CrawlContext struct{
@@ -18,6 +23,7 @@ type CrawlContext struct{
     index int
     entities [][]byte
     output string
+    device string
     addr string
     port int
 }
@@ -31,6 +37,7 @@ func main() {
     flag.IntVar(&context.port, "port", 9966, "server port")
     flag.StringVar(&source, "source", "", "guidhash source file")
     flag.StringVar(&context.output, "output", "", "download output path")
+    flag.StringVar(&context.device, "device", "en0", "network interface for pcap")
     flag.IntVar(&context.index, "index", 0, "download index")
     flag.IntVar(&parallel, "parallel", 4, "parallel downloads")
     flag.Parse()
@@ -61,8 +68,60 @@ func main() {
         group.Add(1)
         go crawl(context, &group)
     }
-
+    go monitor(context)
     group.Wait()
+}
+
+func monitor(context *CrawlContext) {
+    handle, err := pcap.OpenLive(context.device, 64<<10, true, pcap.BlockForever)
+    if err != nil { panic(fmt.Sprintf("pcap open err: %v", err)) }
+
+    filter := fmt.Sprintf("tcp and host %s and port %d", context.addr, context.port)
+    if err := handle.SetBPFFilter(filter); err != nil {panic(fmt.Sprintf("pcap filter err: %v", err))}
+    defer handle.Close()
+
+    source := gopacket.NewPacketSource(handle, handle.LinkType())
+    source.NoCopy = true
+
+    file, err := os.OpenFile(fmt.Sprintf("%s_%d.csv", context.addr, context.port), os.O_CREATE | os.O_WRONLY, 0700)
+    if err != nil {panic(fmt.Sprintf("open file err: %v", err))}
+    defer file.Close()
+
+    sep := ", "
+    base := time.Now()
+    incoming := 0
+    outgoing := 0
+    var mutex sync.Mutex
+
+    go func() {
+        for {
+            log.Printf("INCOMING:%6.2fM/s  OUTGOING:%6.2fM/s", float64(incoming)/(1<<20), float64(outgoing)/(1<<20))
+            mutex.Lock()
+            incoming = 0
+            outgoing = 0
+            mutex.Unlock()
+            time.Sleep(time.Second)
+        }
+    }()
+
+    for packet := range source.Packets() {
+        if packet.TransportLayer() == nil || packet.TransportLayer().LayerType() != layers.LayerTypeTCP {continue}
+        tcp := packet.TransportLayer().(*layers.TCP)
+
+        elapse := time.Now().Sub(base).Nanoseconds()
+        size := len(tcp.Payload)
+        if size > 0 {
+            if _, err := file.WriteString(strconv.FormatInt(elapse, 10)); err != nil {panic(fmt.Sprintf("write err: %v", err))}
+            file.WriteString(sep)
+            file.WriteString(strconv.Itoa(int(tcp.SrcPort)))
+            file.WriteString(sep)
+            file.WriteString(strconv.Itoa(size))
+            file.WriteString("\n")
+            mutex.Lock()
+            if tcp.SrcPort == layers.TCPPort(context.port) { incoming += size } else { outgoing += size }
+            mutex.Unlock()
+        }
+    }
 }
 
 func crawl(context *CrawlContext, group *sync.WaitGroup) {
