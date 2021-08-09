@@ -172,7 +172,7 @@ func Open(name string, uuid string) (*File, error) {
     file, err := os.Open(name)
     if err != nil {return nil, err}
     f := &File{f: file, name: name, uuid: uuid}
-    if s, err := file.Stat(); err == nil && s.Size() > 0 {
+    if s, err := file.Stat(); err == nil {
         f.size = s.Size()
         if mcache.core.capacity > 0 && s.Size() < mcache.limit {
             f.m = bytes.NewBuffer(make([]byte, 0, s.Size()))
