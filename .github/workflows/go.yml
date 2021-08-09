@@ -21,15 +21,15 @@ jobs:
     - run: mkdir -p build/{linux,macos,windows}
     - run: env GOOS=linux GOARCH=amd64 go build -v -o build/linux/unity-gocache ./gocache.go
     - run: env GOOS=linux GOARCH=amd64 go build -v -o build/linux/simulator ./cmd/simulator.go
-    - run: env GOOS=linux GOARCH=amd64 go build -v -o build/linux/crawler ./cmd/crawler.go
+#    - run: env GOOS=linux GOARCH=amd64 go build -v -o build/linux/crawler ./cmd/crawler.go
 
     - run: env GOOS=darwin GOARCH=amd64 go build -v -o build/macos/unity-gocache ./gocache.go
     - run: env GOOS=darwin GOARCH=amd64 go build -v -o build/macos/simulator ./cmd/simulator.go
-    - run: env GOOS=darwin GOARCH=amd64 go build -v -o build/macos/crawler ./cmd/crawler.go
+#    - run: env GOOS=darwin GOARCH=amd64 go build -v -o build/macos/crawler ./cmd/crawler.go
 
     - run: env GOOS=windows GOARCH=amd64 go build -v -o build/windows/unity-gocache ./gocache.go
     - run: env GOOS=windows GOARCH=amd64 go build -v -o build/windows/simulator ./cmd/simulator.go
-    - run: env GOOS=windows GOARCH=amd64 go build -v -o build/windows/crawler ./cmd/crawler.go
+#    - run: env GOOS=windows GOARCH=amd64 go build -v -o build/windows/crawler ./cmd/crawler.go
 
     - uses: actions/upload-artifact@v2
       with:
