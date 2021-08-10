@@ -133,13 +133,12 @@ func crawlx(context *CrawlXContext, group *sync.WaitGroup) {
         group.Done()
     }()
 
-    guard := make(chan struct{}, 10)
+    guard := make(chan struct{}, 20)
 
     sent := 0
     go func() {
         for {
             if context.index >= len(context.entities) {return}
-            guard <- struct{}{}
             var uuid []byte
             context.Lock()
             index := 0
@@ -147,8 +146,10 @@ func crawlx(context *CrawlXContext, group *sync.WaitGroup) {
             context.index++
             context.Unlock()
             uuid = context.entities[index]
+            guard <- struct{}{}
             if err := c.GetSend(uuid, server.RequestTypeBin); err != nil {panic(err)}
             sent++
+            guard <- struct{}{}
             if err := c.GetSend(uuid, server.RequestTypeInf); err != nil {panic(err)}
             sent++
         }
@@ -157,9 +158,9 @@ func crawlx(context *CrawlXContext, group *sync.WaitGroup) {
     done := 0
     for {
         if sent > 0 && done >= sent {return}
+        <-guard
         ctx, err := c.GetScan()
         if err != nil {panic(err)}
-        <-guard
         done++
         if !ctx.Found || ctx.Size == 0 {continue}
         name := hex.EncodeToString(ctx.Uuid[:16]) + "-" + hex.EncodeToString(ctx.Uuid[16:])
