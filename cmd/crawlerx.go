@@ -16,8 +16,18 @@ import (
     "time"
 )
 
+type CrawlXContext struct{
+    sync.Mutex
+    index int
+    entities [][]byte
+    output string
+    device string
+    addr string
+    port int
+}
+
 func main() {
-    context := &CrawlContext{}
+    context := &CrawlXContext{}
 
     parallel := 0
     var source string
@@ -27,7 +37,7 @@ func main() {
     flag.StringVar(&context.output, "output", "", "download output path")
     flag.StringVar(&context.device, "device", "en0", "network interface for pcap")
     flag.IntVar(&context.index, "index", 0, "download index")
-    flag.IntVar(&parallel, "parallel", 4, "parallel downloads")
+    flag.IntVar(&parallel, "parallel", 1, "parallel downloads")
     flag.Parse()
 
     if len(context.output) == 0 {
@@ -60,7 +70,7 @@ func main() {
     group.Wait()
 }
 
-func monitorx(context *CrawlContext) {
+func monitorx(context *CrawlXContext) {
     handle, err := pcap.OpenLive(context.device, 64<<10, true, pcap.BlockForever)
     if err != nil { panic(fmt.Sprintf("pcap open err: %v", err)) }
 
@@ -114,7 +124,7 @@ func monitorx(context *CrawlContext) {
     }
 }
 
-func crawlx(context *CrawlContext, group *sync.WaitGroup) {
+func crawlx(context *CrawlXContext, group *sync.WaitGroup) {
     c := client.Unity{Addr: context.addr, Port: context.port}
     if err := c.Connect(false); err != nil {panic(err)}
 
@@ -123,10 +133,13 @@ func crawlx(context *CrawlContext, group *sync.WaitGroup) {
         group.Done()
     }()
 
+    guard := make(chan struct{}, 10)
+
     sent := 0
     go func() {
         for {
             if context.index >= len(context.entities) {return}
+            guard <- struct{}{}
             var uuid []byte
             context.Lock()
             index := 0
@@ -143,18 +156,22 @@ func crawlx(context *CrawlContext, group *sync.WaitGroup) {
 
     done := 0
     for {
-        if done >= sent {return}
+        if sent > 0 && done >= sent {return}
         ctx, err := c.GetScan()
         if err != nil {panic(err)}
+        <-guard
         done++
         if !ctx.Found || ctx.Size == 0 {continue}
         name := hex.EncodeToString(ctx.Uuid[:16]) + "-" + hex.EncodeToString(ctx.Uuid[16:])
         dir := path.Join(context.output, name[:2])
         if _, err := os.Stat(dir); err != nil && os.IsNotExist(err) { os.MkdirAll(dir, 0766) }
         filename := path.Join(dir, name + "." + ctx.Type.FileExt())
-        if _, err := os.Stat(filename); err == nil || os.IsExist(err) {continue}
         if file, err := os.OpenFile(filename, os.O_CREATE | os.O_WRONLY, 0766); err != nil {panic(err)} else {
-            if err := c.GetRecv(ctx.Size, ctx.Type, file); err != nil {panic(err)}
+            if err := c.GetRecv(ctx.Size, ctx.Type, file); err != nil {
+                file.Close()
+                os.Remove(file.Name())
+                panic(err)
+            }
             file.Close()
         }
     }

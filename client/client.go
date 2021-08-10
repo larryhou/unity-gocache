@@ -47,7 +47,7 @@ func (u *Unity) Connect(noDelay bool) error {
 
 func (u *Unity) GetSend(id []byte, t server.RequestType) error {
 	p := 0
-	b := u.g[:0]
+	b := u.g[:]
 	b[p] = 'g'
 	p++
 	b[p] = byte(t)
@@ -68,10 +68,10 @@ func (u *Unity) GetScan() (ctx *GetContext, err error) {
 	cmd := u.b[:2]
 	ctx = &GetContext{Found: false}
 	if err = u.c.Read(cmd, len(cmd)); err != nil {return}
+	ctx.Type = server.RequestType(cmd[1])
 	if cmd[0] == '-' { return ctx, u.c.Read(ctx.Uuid[:], 32) }
 	ctx.Found = true
-	ctx.Type = server.RequestType(cmd[1])
-	if cmd[0] != '+' {return ctx, fmt.Errorf("get cmd not supported: %s", string(cmd))}
+	if cmd[0] != '+' {return ctx, fmt.Errorf("get cmd not supported: %s", hex.EncodeToString(cmd))}
 	sb := u.b[:16]
 	if err = u.c.Read(sb, len(sb)); err != nil {return}
 	if _, err = hex.Decode(sb, sb); err != nil {return}

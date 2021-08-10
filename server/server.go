@@ -89,7 +89,10 @@ func (s *Stream) WriteString(buf []byte, v string) error {
 
 func (s *Stream) Read(p []byte, n int) error {
     for t := 0; t < n; {
-        if i, err := s.Rwp.Read(p[t:n]); err != nil {return err} else {t+=i}
+        if i, err := s.Rwp.Read(p[t:n]); err == nil {t+=i} else {
+            if err == io.EOF && t+i==n {break}
+            return err
+        }
     }
     return nil
 }
