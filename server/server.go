@@ -25,7 +25,7 @@ const (
     RequestTypeRes RequestType = 'r'
 )
 
-func (r RequestType) extension() string {
+func (r RequestType) FileExt() string {
     switch r {
     case RequestTypeInf: return "info"
     case RequestTypeBin: return "bin"
@@ -133,6 +133,7 @@ func (s *CacheServer) Listen() error {
     for {
         c, err := listener.Accept()
         if err != nil { continue }
+        if tc, ok := c.(*net.TCPConn); ok {tc.SetNoDelay(false)}
         go s.Handle(c)
     }
 }
@@ -162,7 +163,7 @@ func (s *CacheServer) Send(c net.Conn, event chan *Context) {
             exists := true
             var in *Stream
             size := int64(0)
-            filename := path.Join(s.Path, ctx.guid[:2], ctx.guid + "-" + ctx.hash + "." + t.extension())
+            filename := path.Join(s.Path, ctx.guid[:2], ctx.guid + "-" + ctx.hash + "." + t.FileExt())
             if s.DryRun {
                 in = &Stream{Rwp: &Air{}}
                 size = 2<<20
@@ -297,7 +298,7 @@ func (s *CacheServer) Handle(c net.Conn) {
 
             dir := path.Join(s.Path, trx.guid[:2])
             if _, err := os.Stat(dir); err != nil || os.IsNotExist(err) { os.MkdirAll(dir, 0700) }
-            filename := path.Join(dir, trx.guid + "-" + trx.hash + "." + t.extension())
+            filename := path.Join(dir, trx.guid + "-" + trx.hash + "." + t.FileExt())
 
             var out *Stream
             if s.DryRun { out = &Stream{Rwp: Air{}} } else {

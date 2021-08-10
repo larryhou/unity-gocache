@@ -202,7 +202,7 @@ func handle(c net.Conn) {
 func addClients(num int) {
 	for i := 0; i < num; i++ {
 		u := &client.Unity{Addr: environ.addr, Port: environ.port, Verify: environ.verify, Rand: environ.rand}
-		if err := u.Connect(); err != nil {
+		if err := u.Connect(true); err != nil {
 			u.Close()
 			go func() {
 				environ.closed <- struct{}{}

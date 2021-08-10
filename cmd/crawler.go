@@ -58,7 +58,7 @@ func main() {
     }
 
     if _, err := os.Stat(context.output); err != nil && os.IsNotExist(err) {
-        if err := os.MkdirAll(context.output, 0700); err != nil {panic(err)}
+        if err := os.MkdirAll(context.output, 0766); err != nil {panic(err)}
     }
 
     context.entities = entities
@@ -83,11 +83,11 @@ func monitor(context *CrawlContext) {
     source := gopacket.NewPacketSource(handle, handle.LinkType())
     source.NoCopy = true
 
-    file, err := os.OpenFile(fmt.Sprintf("%s_%d.csv", context.addr, context.port), os.O_CREATE | os.O_WRONLY, 0700)
+    file, err := os.OpenFile(fmt.Sprintf("%s_%d.csv", context.addr, context.port), os.O_CREATE | os.O_WRONLY, 0766)
     if err != nil {panic(fmt.Sprintf("open file err: %v", err))}
     defer file.Close()
 
-    sep := ", "
+    sep := ","
     base := time.Now()
     incoming := 0
     outgoing := 0
@@ -115,6 +115,8 @@ func monitor(context *CrawlContext) {
             file.WriteString(sep)
             file.WriteString(strconv.Itoa(int(tcp.SrcPort)))
             file.WriteString(sep)
+            file.WriteString(strconv.Itoa(int(tcp.DstPort)))
+            file.WriteString(sep)
             file.WriteString(strconv.Itoa(size))
             file.WriteString("\n")
             mutex.Lock()
@@ -126,7 +128,7 @@ func monitor(context *CrawlContext) {
 
 func crawl(context *CrawlContext, group *sync.WaitGroup) {
     c := client.Unity{Addr: context.addr, Port: context.port}
-    if err := c.Connect(); err != nil {panic(err)}
+    if err := c.Connect(true); err != nil {panic(err)}
     defer func() {
         c.Close()
         group.Done()
@@ -144,18 +146,18 @@ func crawl(context *CrawlContext, group *sync.WaitGroup) {
 
         name := hex.EncodeToString(uuid[:16]) + "-" + hex.EncodeToString(uuid[16:])
         dir := path.Join(context.output, name[:2])
-        if _, err := os.Stat(dir); err != nil && os.IsNotExist(err) { os.MkdirAll(dir, 0700) }
+        if _, err := os.Stat(dir); err != nil && os.IsNotExist(err) { os.MkdirAll(dir, 0766) }
         filename := path.Join(dir, name + ".bin")
         if _, err := os.Stat(filename); err == nil || os.IsExist(err) {continue}
         size := client.Counter(0)
-        if file, err := os.OpenFile(filename, os.O_CREATE | os.O_WRONLY, 0700); err != nil {panic(err)} else {
+        if file, err := os.OpenFile(filename, os.O_CREATE | os.O_WRONLY, 0766); err != nil {panic(err)} else {
             if err := c.Get(uuid, server.RequestTypeBin, io.MultiWriter(file, &size)); err != nil {panic(err)}
             file.Close()
             if size == 0 { os.Remove(file.Name()) } else {log.Printf("%6d %s %d", index, file.Name(), size)}
         }
 
         size = 0
-        if file, err := os.OpenFile(path.Join(dir, name + ".info"), os.O_CREATE | os.O_WRONLY, 0700); err != nil {panic(err)} else {
+        if file, err := os.OpenFile(path.Join(dir, name + ".info"), os.O_CREATE | os.O_WRONLY, 0766); err != nil {panic(err)} else {
             if err := c.Get(uuid, server.RequestTypeInf, io.MultiWriter(file, &size)); err != nil {panic(err)}
             file.Close()
             if size == 0 { os.Remove(file.Name()) } else {log.Printf("%6d %s %d", index, file.Name(), size)}

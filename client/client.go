@@ -21,6 +21,7 @@ type Unity struct {
 	Rand   *rand2.Rand
 	c      *server.Stream
 	b      [32 << 10]byte
+	g      [34]byte
 }
 
 func (u *Unity) Close() error {
@@ -30,9 +31,10 @@ func (u *Unity) Close() error {
 	return nil
 }
 
-func (u *Unity) Connect() error {
+func (u *Unity) Connect(noDelay bool) error {
 	c, err := net.Dial("tcp", fmt.Sprintf("%s:%d", u.Addr, u.Port))
 	if err != nil {return err}
+	if tc, ok := c.(*net.TCPConn); ok {tc.SetNoDelay(noDelay)}
 	u.c = &server.Stream{Rwp: c}
 	if err := u.c.Write([]byte{'f', 'e'}, 2); err != nil {return err}
 	ver := make([]byte, 8)
@@ -43,24 +45,42 @@ func (u *Unity) Connect() error {
 	return nil
 }
 
-func (u *Unity) Get(id []byte, t server.RequestType, w io.Writer) error {
-	b := bytes.NewBuffer(u.b[:0])
-	b.WriteByte('g')
-	b.WriteByte(byte(t))
-	b.Write(id[:32])
-	if err := u.c.Write(b.Bytes(), b.Len()); err != nil {return err}
+func (u *Unity) GetSend(id []byte, t server.RequestType) error {
+	p := 0
+	b := u.g[:0]
+	b[p] = 'g'
+	p++
+	b[p] = byte(t)
+	p++
+	copy(b[p:], id[:32])
+	p += 32
+	return u.c.Write(b, p)
+}
+
+type GetContext struct {
+	Uuid  [32]byte
+	Size  int64
+	Type  server.RequestType
+	Found bool
+}
+
+func (u *Unity) GetScan() (ctx *GetContext, err error) {
 	cmd := u.b[:2]
-	if err := u.c.Read(cmd, len(cmd)); err != nil {return err}
-	if cmd[0] == '-' {
-		return u.c.Read(u.b[:], 32)
-	}
-	if cmd[0] != '+' || cmd[1] != byte(t) {return fmt.Errorf("get cmd not match: %s", string(cmd))}
+	ctx = &GetContext{Found: false}
+	if err = u.c.Read(cmd, len(cmd)); err != nil {return}
+	if cmd[0] == '-' { return ctx, u.c.Read(ctx.Uuid[:], 32) }
+	ctx.Found = true
+	ctx.Type = server.RequestType(cmd[1])
+	if cmd[0] != '+' {return ctx, fmt.Errorf("get cmd not supported: %s", string(cmd))}
 	sb := u.b[:16]
-	if err := u.c.Read(sb, len(sb)); err != nil {return err}
-	if _, err := hex.Decode(sb, sb); err != nil {return err}
-	size := int64(binary.BigEndian.Uint64(sb))
-	if err := u.c.Read(u.b[:], 32); err != nil {return err}
-	if !bytes.Equal(u.b[:32], id) {return fmt.Errorf("cache id not match")}
+	if err = u.c.Read(sb, len(sb)); err != nil {return}
+	if _, err = hex.Decode(sb, sb); err != nil {return}
+	ctx.Size = int64(binary.BigEndian.Uint64(sb))
+	if err = u.c.Read(ctx.Uuid[:], 32); err != nil {return}
+	return
+}
+
+func (u *Unity) GetRecv(size int64, t server.RequestType, w io.Writer) error {
 	read := int64(0)
 	for read < size {
 		num := int64(len(u.b))
@@ -74,6 +94,15 @@ func (u *Unity) Get(id []byte, t server.RequestType, w io.Writer) error {
 		}
 	}
 	return nil
+}
+
+func (u *Unity) Get(id []byte, t server.RequestType, w io.Writer) error {
+	if err := u.GetSend(id, t); err != nil {return err}
+	ctx, err := u.GetScan()
+	if ctx.Type != t {return fmt.Errorf("get type not match: %c != %c", ctx.Type, t)}
+	if !bytes.Equal(id, ctx.Uuid[:]) { return fmt.Errorf("get id not match: %s != %s", hex.EncodeToString(ctx.Uuid[:]), hex.EncodeToString(id)) }
+	if err != nil {return err}
+	if ctx.Size > 0 {return u.GetRecv(ctx.Size, t, w)} else {return nil}
 }
 
 func (u *Unity) Put(t server.RequestType, size int64, r io.Reader) error {
