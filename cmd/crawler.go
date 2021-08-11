@@ -10,7 +10,6 @@ import (
     "github.com/larryhou/unity-gocache/client"
     "github.com/larryhou/unity-gocache/server"
     "io"
-    "log"
     "os"
     "path"
     "strconv"
@@ -95,7 +94,7 @@ func monitor(context *CrawlContext) {
 
     go func() {
         for {
-            log.Printf("INCOMING:%6.2fM/s  OUTGOING:%6.2fM/s", float64(incoming)/(1<<20), float64(outgoing)/(1<<20))
+            fmt.Printf("\r%7d INCOMING:%6.2fM/s  OUTGOING:%6.2fM/s", context.index, float64(incoming)/(1<<20), float64(outgoing)/(1<<20))
             mutex.Lock()
             incoming = 0
             outgoing = 0
@@ -148,19 +147,18 @@ func crawl(context *CrawlContext, group *sync.WaitGroup) {
         dir := path.Join(context.output, name[:2])
         if _, err := os.Stat(dir); err != nil && os.IsNotExist(err) { os.MkdirAll(dir, 0766) }
         filename := path.Join(dir, name + ".bin")
-        if _, err := os.Stat(filename); err == nil || os.IsExist(err) {continue}
         size := client.Counter(0)
         if file, err := os.OpenFile(filename, os.O_CREATE | os.O_WRONLY, 0766); err != nil {panic(err)} else {
             if err := c.Get(uuid, server.RequestTypeBin, io.MultiWriter(file, &size)); err != nil {panic(err)}
             file.Close()
-            if size == 0 { os.Remove(file.Name()) } else {log.Printf("%6d %s %d", index, file.Name(), size)}
+            if size == 0 { os.Remove(file.Name()) }
         }
 
         size = 0
         if file, err := os.OpenFile(path.Join(dir, name + ".info"), os.O_CREATE | os.O_WRONLY, 0766); err != nil {panic(err)} else {
             if err := c.Get(uuid, server.RequestTypeInf, io.MultiWriter(file, &size)); err != nil {panic(err)}
             file.Close()
-            if size == 0 { os.Remove(file.Name()) } else {log.Printf("%6d %s %d", index, file.Name(), size)}
+            if size == 0 { os.Remove(file.Name()) }
         }
     }
 }
