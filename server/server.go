@@ -351,7 +351,7 @@ func (s *CacheServer) Handle(c net.Conn) {
                 logger.Debug("trx done", zap.String("guid", trx.guid), zap.String("hash", trx.hash))
             }
         default:
-            logger.Error("unsupported command", zap.String("cmd", string(cmd)))
+            logger.Error("unsupported command", zap.String("cmd", string(cmd)), zap.String("addr", addr))
             return
         }
     }
