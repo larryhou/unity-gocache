@@ -1,6 +1,7 @@
 package main
 
 import (
+    "encoding/binary"
     "encoding/hex"
     "flag"
     "fmt"
@@ -78,8 +79,11 @@ func monitorx(context *CrawlXContext) {
     if err := handle.SetBPFFilter(filter); err != nil {panic(fmt.Sprintf("pcap filter err: %v", err))}
     defer handle.Close()
 
-    source := gopacket.NewPacketSource(handle, handle.LinkType())
-    source.NoCopy = true
+    var eth layers.Ethernet
+    var ipv4 layers.IPv4
+    var ipv6 layers.IPv6
+    parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet, &eth, &ipv4, &ipv6)
+    parser.IgnoreUnsupported = true
 
     file, err := os.OpenFile(fmt.Sprintf("%s_%d.csv", context.addr, context.port), os.O_CREATE | os.O_WRONLY, 0766)
     if err != nil {panic(fmt.Sprintf("open file err: %v", err))}
@@ -101,24 +105,39 @@ func monitorx(context *CrawlXContext) {
             time.Sleep(time.Second)
         }
     }()
+    var data []byte
+    var stack []gopacket.LayerType
+    for {
+        packet, _, err := handle.ZeroCopyReadPacketData()
+        if err != nil {continue}
+        if err := parser.DecodeLayers(packet, &stack); err != nil {continue}
+        switch eth.EthernetType {
+        case layers.EthernetTypeIPv4:
+            if ipv4.Protocol != layers.IPProtocolTCP {continue}
+            data = ipv4.Payload
+        case layers.EthernetTypeIPv6:
+            if ipv6.NextHeader != layers.IPProtocolTCP {continue}
+            data = ipv6.Payload
+        default:continue
+        }
 
-    for packet := range source.Packets() {
-        if packet.TransportLayer() == nil || packet.TransportLayer().LayerType() != layers.LayerTypeTCP {continue}
-        tcp := packet.TransportLayer().(*layers.TCP)
+        sport := binary.BigEndian.Uint16(data)
+        dport := binary.BigEndian.Uint16(data[2:])
+        header := data[12] >> 4 << 2
 
+        size := len(data) - int(header)
         elapse := time.Now().Sub(base).Nanoseconds()
-        size := len(tcp.Payload)
         if size > 0 {
             if _, err := file.WriteString(strconv.FormatInt(elapse, 10)); err != nil {panic(fmt.Sprintf("write err: %v", err))}
             file.WriteString(sep)
-            file.WriteString(strconv.Itoa(int(tcp.SrcPort)))
+            file.WriteString(strconv.Itoa(int(sport)))
             file.WriteString(sep)
-            file.WriteString(strconv.Itoa(int(tcp.DstPort)))
+            file.WriteString(strconv.Itoa(int(dport)))
             file.WriteString(sep)
             file.WriteString(strconv.Itoa(size))
             file.WriteString("\n")
             mutex.Lock()
-            if tcp.SrcPort == layers.TCPPort(context.port) { incoming += size } else { outgoing += size }
+            if sport == uint16(context.port) { incoming += size } else { outgoing += size }
             mutex.Unlock()
         }
     }
