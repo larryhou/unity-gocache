@@ -1,20 +1,14 @@
 package main
 
 import (
-    "encoding/binary"
     "encoding/hex"
     "flag"
     "fmt"
-    "github.com/google/gopacket"
-    "github.com/google/gopacket/layers"
-    "github.com/google/gopacket/pcap"
     "github.com/larryhou/unity-gocache/client"
     "github.com/larryhou/unity-gocache/server"
     "os"
     "path"
-    "strconv"
     "sync"
-    "time"
 )
 
 type CrawlXContext struct{
@@ -67,80 +61,8 @@ func main() {
         group.Add(1)
         go crawlx(context, &group)
     }
-    go monitorx(context)
+    go client.Monitor(context.device, context.addr, context.port, &context.index)
     group.Wait()
-}
-
-func monitorx(context *CrawlXContext) {
-    handle, err := pcap.OpenLive(context.device, 64<<10, true, pcap.BlockForever)
-    if err != nil { panic(fmt.Sprintf("pcap open err: %v", err)) }
-
-    filter := fmt.Sprintf("tcp and host %s and port %d", context.addr, context.port)
-    if err := handle.SetBPFFilter(filter); err != nil {panic(fmt.Sprintf("pcap filter err: %v", err))}
-    defer handle.Close()
-
-    var eth layers.Ethernet
-    var ipv4 layers.IPv4
-    var ipv6 layers.IPv6
-    parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet, &eth, &ipv4, &ipv6)
-    parser.IgnoreUnsupported = true
-
-    file, err := os.OpenFile(fmt.Sprintf("%s_%d.csv", context.addr, context.port), os.O_CREATE | os.O_WRONLY, 0766)
-    if err != nil {panic(fmt.Sprintf("open file err: %v", err))}
-    defer file.Close()
-
-    sep := ","
-    base := time.Now()
-    incoming := 0
-    outgoing := 0
-    var mutex sync.Mutex
-
-    go func() {
-        for {
-            fmt.Printf("\r%7d INCOMING:%6.2fM/s  OUTGOING:%6.2fM/s", context.index+1, float64(incoming)/(1<<20), float64(outgoing)/(1<<20))
-            mutex.Lock()
-            incoming = 0
-            outgoing = 0
-            mutex.Unlock()
-            time.Sleep(time.Second)
-        }
-    }()
-    var data []byte
-    var stack []gopacket.LayerType
-    for {
-        packet, _, err := handle.ZeroCopyReadPacketData()
-        if err != nil {continue}
-        if err := parser.DecodeLayers(packet, &stack); err != nil {continue}
-        switch eth.EthernetType {
-        case layers.EthernetTypeIPv4:
-            if ipv4.Protocol != layers.IPProtocolTCP {continue}
-            data = ipv4.Payload
-        case layers.EthernetTypeIPv6:
-            if ipv6.NextHeader != layers.IPProtocolTCP {continue}
-            data = ipv6.Payload
-        default:continue
-        }
-
-        sport := binary.BigEndian.Uint16(data)
-        dport := binary.BigEndian.Uint16(data[2:])
-        header := data[12] >> 4 << 2
-
-        size := len(data) - int(header)
-        elapse := time.Now().Sub(base).Nanoseconds()
-        if size > 0 {
-            if _, err := file.WriteString(strconv.FormatInt(elapse, 10)); err != nil {panic(fmt.Sprintf("write err: %v", err))}
-            file.WriteString(sep)
-            file.WriteString(strconv.Itoa(int(sport)))
-            file.WriteString(sep)
-            file.WriteString(strconv.Itoa(int(dport)))
-            file.WriteString(sep)
-            file.WriteString(strconv.Itoa(size))
-            file.WriteString("\n")
-            mutex.Lock()
-            if sport == uint16(context.port) { incoming += size } else { outgoing += size }
-            mutex.Unlock()
-        }
-    }
 }
 
 func crawlx(context *CrawlXContext, group *sync.WaitGroup) {
