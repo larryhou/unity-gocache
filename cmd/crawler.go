@@ -1,10 +1,12 @@
 package main
 
 import (
+    "bytes"
     "encoding/hex"
     "flag"
     "fmt"
     "github.com/google/gopacket/layers"
+    "github.com/larryhou/tcpdump"
     "github.com/larryhou/unity-gocache/client"
     "github.com/larryhou/unity-gocache/server"
     "io"
@@ -70,7 +72,7 @@ func main() {
 }
 
 func monitor(context *CrawlContext) {
-    td := &client.TcpDump{
+    td := &tcpdump.TcpDump{
         Device: context.device,
         Filter: fmt.Sprintf("tcp and host %s and port %d", context.addr, context.port),
     }
@@ -80,27 +82,27 @@ func monitor(context *CrawlContext) {
     defer file.Close()
 
     base := time.Now()
-    sep := ","
+    sep := byte(',')
 
     incoming := 0
     outgoing := 0
     var mutex sync.Mutex
-    td.Handle = func(packet *client.Packet) {
+    td.Handle = func(packet *tcpdump.Packet, buf *bytes.Buffer) {
         elapse := time.Now().Sub(base).Nanoseconds()
         for _, t := range packet.Stack {
             if t != layers.LayerTypeTCP {continue}
             tcp := packet.Tcp
-            size := len(tcp.Payload)
-            if size > 0 {
-                if _, err := file.WriteString(strconv.FormatInt(elapse, 10)); err != nil {panic(fmt.Sprintf("write err: %v", err))}
-                file.WriteString(sep)
-                file.WriteString(strconv.Itoa(int(tcp.SrcPort)))
-                file.WriteString(sep)
-                file.WriteString(strconv.Itoa(int(tcp.DstPort)))
-                file.WriteString(sep)
-                file.WriteString(strconv.Itoa(size))
-                file.WriteString("\n")
+            if size := len(tcp.Payload); size > 0 {
+                buf.WriteString(strconv.FormatInt(elapse, 10))
+                buf.WriteByte(sep)
+                buf.WriteString(strconv.Itoa(int(tcp.SrcPort)))
+                buf.WriteByte(sep)
+                buf.WriteString(strconv.Itoa(int(tcp.DstPort)))
+                buf.WriteByte(sep)
+                buf.WriteString(strconv.Itoa(size))
+                buf.WriteByte('\n')
                 mutex.Lock()
+                if _, err := file.Write(buf.Bytes()); err != nil {panic(fmt.Sprintf("write err: %v", err))}
                 if tcp.SrcPort == layers.TCPPort(context.port) { incoming += size } else { outgoing += size }
                 mutex.Unlock()
             }
@@ -118,8 +120,8 @@ func monitor(context *CrawlContext) {
         }
     }()
 
-    if err := td.Start(8); err != nil {
-        td.Close()
+    if err := td.Start(4); err != nil {
+        td.Stop()
         panic(err)
     }
 }
