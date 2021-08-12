@@ -12,7 +12,7 @@ import (
 )
 
 func Monitor(device,addr string, port int, index *int) {
-    td := &tcpdump.TcpDump{
+    td := &tcpdump.Client{
         Device: device,
         Filter: fmt.Sprintf("tcp and host %s and port %d", addr, port),
     }
