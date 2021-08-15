@@ -99,9 +99,9 @@ func (u *Unity) GetRecv(size int64, t server.RequestType, w io.Writer) error {
 func (u *Unity) Get(id []byte, t server.RequestType, w io.Writer) error {
 	if err := u.GetSend(id, t); err != nil {return err}
 	ctx, err := u.GetScan()
+	if err != nil {return err}
 	if ctx.Type != t {return fmt.Errorf("get type not match: %c != %c", ctx.Type, t)}
 	if !bytes.Equal(id, ctx.Uuid[:]) { return fmt.Errorf("get id not match: %s != %s", hex.EncodeToString(ctx.Uuid[:]), hex.EncodeToString(id)) }
-	if err != nil {return err}
 	if ctx.Size > 0 {return u.GetRecv(ctx.Size, t, w)} else {return nil}
 }
 
