@@ -136,7 +136,7 @@ func (s *CacheServer) Listen() error {
     for {
         c, err := listener.Accept()
         if err != nil { continue }
-        if tc, ok := c.(*net.TCPConn); ok {tc.SetNoDelay(false)}
+        if tc, ok := c.(*net.TCPConn); ok {tc.SetNoDelay(true)}
         go s.Handle(c)
     }
 }
