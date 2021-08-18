@@ -58,6 +58,12 @@ func Monitor(device,addr string, port int, index *int) error {
             buf.WriteString(strconv.Itoa(int(tcp.DstPort)))
             buf.WriteByte(sep)
             buf.WriteString(strconv.Itoa(size))
+            buf.WriteByte(sep)
+            if tcp.PSH {buf.WriteByte('P')}
+            if tcp.ACK {buf.WriteByte('A')}
+            if tcp.ECE {buf.WriteByte('E')}
+            if tcp.CWR {buf.WriteByte('C')}
+            if tcp.NS {buf.WriteByte('N')}
             buf.WriteByte('\n')
             mutex.Lock()
             if _, err := file.Write(buf.Bytes()); err != nil {panic(fmt.Sprintf("write err: %v", err))}
