@@ -1,0 +1,38 @@
+package main
+
+import (
+    "bytes"
+    "flag"
+    "fmt"
+    "github.com/larryhou/unity-gocache/server"
+    "net"
+    "time"
+)
+
+func main() {
+    var port int
+    flag.IntVar(&port, "port", 1234, "server listen port")
+    flag.Parse()
+
+    if listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port)); err != nil {panic(err)} else {
+        for {
+            if c, err := listener.Accept(); err == nil {
+                if t, ok := c.(*net.TCPConn); ok {t.SetNoDelay(true)}
+                s := &server.Stream{Rwp: c}
+                go func() {
+                    defer c.Close()
+                    buf := &bytes.Buffer{}
+                    num := 0
+                    for range time.Tick(time.Microsecond * 3) {
+                        buf.Reset()
+                        buf.WriteString(fmt.Sprintf("%8d", num))
+                        buf.WriteByte(' ')
+                        buf.WriteString("nodelay message is written.\n")
+                        if err := s.Write(buf.Bytes(), buf.Len()); err != nil {return}
+                        num++
+                    }
+                }()
+            }
+        }
+    }
+}
