@@ -20,7 +20,7 @@ type Unity struct {
 	Verify bool
 	Rand   *rand2.Rand
 	c      *server.Stream
-	b      [32 << 10]byte
+	b      [64<<10]byte
 	g      [34]byte
 }
 
