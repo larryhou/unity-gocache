@@ -23,7 +23,9 @@ func main() {
                     defer c.Close()
                     buf := &bytes.Buffer{}
                     num := 0
-                    for range time.Tick(time.Microsecond * 3) {
+                    t := time.NewTicker(time.Microsecond * 3)
+                    defer t.Stop()
+                    for range t.C {
                         buf.Reset()
                         buf.WriteString(fmt.Sprintf("%8d", num))
                         buf.WriteByte(' ')
