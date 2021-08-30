@@ -34,7 +34,11 @@ func (u *Unity) Close() error {
 func (u *Unity) Connect(noDelay bool) error {
 	c, err := net.Dial("tcp", fmt.Sprintf("%s:%d", u.Addr, u.Port))
 	if err != nil {return err}
-	if tc, ok := c.(*net.TCPConn); ok {tc.SetNoDelay(noDelay)}
+	if tc, ok := c.(*net.TCPConn); ok {
+		tc.SetNoDelay(noDelay)
+		tc.SetReadBuffer(1024<<10)
+		tc.SetWriteBuffer(256<<10)
+	}
 	u.c = &server.Stream{Rwp: c}
 	if err := u.c.Write([]byte{'f', 'e'}, 2); err != nil {return err}
 	ver := make([]byte, 8)
