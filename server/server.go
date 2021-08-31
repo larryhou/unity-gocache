@@ -2,6 +2,7 @@ package server
 
 import (
     "bytes"
+    "context"
     "encoding/binary"
     "encoding/hex"
     "fmt"
@@ -13,6 +14,7 @@ import (
     "os"
     "path"
     "strconv"
+    "syscall"
     "time"
 )
 
@@ -123,7 +125,16 @@ type CacheServer struct {
 }
 
 func (s *CacheServer) Listen() error {
-    listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.Port))
+    lc := &net.ListenConfig{
+        Control: func(network, address string, c syscall.RawConn) error {
+            return c.Control(func(fd uintptr) {
+                syscall.SetsockoptInt(int(fd),syscall.SOL_SOCKET, syscall.SO_RCVBUF,  256 << 10)
+                syscall.SetsockoptInt(int(fd),syscall.SOL_SOCKET, syscall.SO_SNDBUF, 1024 << 10)
+            })
+        },
+    }
+    //listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.Port))
+    listener, err := lc.Listen(context.Background(), "tcp", fmt.Sprintf(":%d", s.Port))
     if err != nil {return err}
     mcache.core.capacity = s.CacheCap
     s.temp = path.Join(s.Path, "temp")
@@ -136,11 +147,7 @@ func (s *CacheServer) Listen() error {
     for {
         c, err := listener.Accept()
         if err != nil { continue }
-        if tc, ok := c.(*net.TCPConn); ok {
-            tc.SetNoDelay(true)
-            tc.SetReadBuffer(256<<10)
-            tc.SetWriteBuffer(512<<10)
-        }
+        if tc, ok := c.(*net.TCPConn); ok { tc.SetNoDelay(true) }
         go s.Handle(c)
     }
 }

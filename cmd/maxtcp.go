@@ -37,8 +37,7 @@ func main() {
         for {
             if c, err := listener.Accept(); err != nil {panic(err)} else {
                 if tc, ok := c.(*net.TCPConn); ok {
-                    tc.SetReadBuffer(2048<<10)
-                    tc.SetWriteBuffer(2048<<10)
+                    if rc, err:= tc.SyscallConn(); err == nil { rc.Control(func(fd uintptr) { setopts(int(fd)) }) }
                 }
                 go func() {
                     defer c.Close()

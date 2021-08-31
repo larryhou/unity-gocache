@@ -12,6 +12,7 @@ import (
 	"io"
 	rand2 "math/rand"
 	"net"
+	"syscall"
 )
 
 type Unity struct {
@@ -32,13 +33,16 @@ func (u *Unity) Close() error {
 }
 
 func (u *Unity) Connect(noDelay bool) error {
-	c, err := net.Dial("tcp", fmt.Sprintf("%s:%d", u.Addr, u.Port))
+	dialer := net.Dialer{Control: func(network, address string, c syscall.RawConn) error {
+		return c.Control(func(fd uintptr) {
+			syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_RCVBUF, 2048 << 10)
+			syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_SNDBUF,  256 << 10)
+			syscall.SetsockoptInt(int(fd), syscall.IPPROTO_TCP, 0x103/*TCP_SENDMOREACKS*/, 1)
+		})
+	}}
+	c, err := dialer.Dial("tcp", fmt.Sprintf("%s:%d", u.Addr, u.Port))
 	if err != nil {return err}
-	if tc, ok := c.(*net.TCPConn); ok {
-		tc.SetNoDelay(noDelay)
-		tc.SetReadBuffer(1024<<10)
-		tc.SetWriteBuffer(256<<10)
-	}
+	if tc, ok := c.(*net.TCPConn); ok { tc.SetNoDelay(noDelay) }
 	u.c = &server.Stream{Rwp: c}
 	if err := u.c.Write([]byte{'f', 'e'}, 2); err != nil {return err}
 	ver := make([]byte, 8)
