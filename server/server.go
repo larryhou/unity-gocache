@@ -128,8 +128,8 @@ func (s *CacheServer) Listen() error {
     lc := &net.ListenConfig{
         Control: func(network, address string, c syscall.RawConn) error {
             return c.Control(func(fd uintptr) {
-                syscall.SetsockoptInt(int(fd),syscall.SOL_SOCKET, syscall.SO_RCVBUF,  256 << 10)
-                syscall.SetsockoptInt(int(fd),syscall.SOL_SOCKET, syscall.SO_SNDBUF, 1024 << 10)
+                syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_RCVBUF,  256 << 10)
+                syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_SNDBUF, 1024 << 10)
             })
         },
     }
